@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "825431850356",
+    "project_id": "guvercin-b5d67",
+    "storage_bucket": "guvercin-b5d67.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:825431850356:android:21a6607405ba1ab91d4021",
+        "android_client_info": {
+          "package_name": "com.example.guvercin"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCKkaGsmOqvcnq-EKmbLJYnSIVZxS6fQ2g"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

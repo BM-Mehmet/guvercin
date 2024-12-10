@@ -1,18 +1,42 @@
+// allprojects {
+//     repositories {
+//         google()
+//         mavenCentral()
+//     }
+// }
+
+// rootProject.buildDir = "../build"
+// subprojects {
+//     project.buildDir = "${rootProject.buildDir}/${project.name}"
+// }
+// subprojects {
+//     project.evaluationDependsOn(":app")
+// }
+
+// tasks.register("clean", Delete) {
+//     delete rootProject.buildDir
+// }
 allprojects {
     repositories {
         google()
         mavenCentral()
+        // Eğer başka bir repository eklemek isterseniz burada belirtebilirsiniz.
     }
 }
 
 rootProject.buildDir = "../build"
+
 subprojects {
     project.buildDir = "${rootProject.buildDir}/${project.name}"
+    // Eğer burada başka bir subproject yapılandırması yapmak isterseniz ekleyebilirsiniz.
 }
+
 subprojects {
     project.evaluationDependsOn(":app")
+    // :app modülüne bağımlı olan diğer modüller burada belirtilebilir.
 }
 
 tasks.register("clean", Delete) {
     delete rootProject.buildDir
+    // Temizleme işlemi sırasında başka dosyaların da silinmesini isterseniz buraya ekleyebilirsiniz.
 }
