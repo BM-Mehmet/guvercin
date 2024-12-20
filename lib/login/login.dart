@@ -53,7 +53,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
     // HTTP POST isteği
     final response = await http.post(
-      Uri.parse('http://192.168.236.249:5001/login'), // Sunucu adresinizi buraya yazın
+      Uri.parse('http://192.168.220.249:5001/login'), // Sunucu adresinizi buraya yazın
       headers: {'Content-Type': 'application/json'},
       body: json.encode({
         'username': username,
@@ -65,7 +65,7 @@ class _LoginScreenState extends State<LoginScreen> {
     if (response.statusCode == 201) {
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (context) => HomePage()),
+        MaterialPageRoute(builder: (context) => const HomePage()),
       );
     } else {
       final responseData = json.decode(response.body);

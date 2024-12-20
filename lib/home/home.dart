@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:guvercin/chat_page/chat.dart';
 import 'package:guvercin/settings/settings_page.dart';
 
 void main() {
@@ -29,7 +30,7 @@ class HomePage extends StatefulWidget {
 
 class _HomeScreenState extends State<HomePage> {
   bool _isSearching = false;
-  TextEditingController _searchController = TextEditingController();
+  final TextEditingController _searchController = TextEditingController();
 
   @override
   Widget build(BuildContext context) {
@@ -108,7 +109,11 @@ class _HomeScreenState extends State<HomePage> {
             IconButton(
               icon: const Icon(Icons.message, size: 30),
               onPressed: () {
-                // Yeni mesaj başlatma fonksiyonu
+                        Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(
+                      builder: (context) => ChatPage()),
+                );
               },
             ),
           ],
