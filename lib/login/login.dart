@@ -114,10 +114,10 @@ class _LoginScreenState extends State<LoginScreen> {
     try {
       if (Theme.of(context).platform == TargetPlatform.iOS) {
         IosDeviceInfo iosInfo = await _deviceInfoPlugin.iosInfo;
-        deviceName = iosInfo.name ?? 'Bilinmeyen Cihaz';
+        deviceName = iosInfo.name;
       } else if (Theme.of(context).platform == TargetPlatform.android) {
         AndroidDeviceInfo androidInfo = await _deviceInfoPlugin.androidInfo;
-        deviceName = androidInfo.model ?? 'Bilinmeyen Cihaz';
+        deviceName = androidInfo.model;
       }
     } catch (e) {
       deviceName = 'Cihaz Bilgisi Alınamadı';
