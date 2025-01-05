@@ -1,66 +1,102 @@
 import 'package:flutter/material.dart';
-import 'package:guvercin/home/home.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 
 class ChatPage extends StatefulWidget {
-  const ChatPage({super.key});
+  final String senderUsername;
+  final String receiverUsername;
+
+  const ChatPage({
+    super.key,
+    required this.senderUsername,
+    required this.receiverUsername,
+  });
 
   @override
   _ChatPageState createState() => _ChatPageState();
 }
 
 class _ChatPageState extends State<ChatPage> {
-  List<Map<String, dynamic>> messages = [
-    {'text': 'Merhaba!', 'isSent': true, 'timestamp': DateTime.now().subtract(const Duration(minutes: 5))},
-    {'text': 'Merhaba, nasılsınız?', 'isSent': false, 'timestamp': DateTime.now().subtract(const Duration(minutes: 4))},
-    {'text': 'İyiyim, teşekkürler. Siz?', 'isSent': true, 'timestamp': DateTime.now().subtract(const Duration(minutes: 3))},
-  ];
-
+  List<Map<String, dynamic>> messages = [];
   final TextEditingController _controller = TextEditingController();
-  int? _replyToMessageIndex; // Yalnızca cevap verilen mesajın index'ini tutar
 
-  void sendMessage(String text) {
-    if (text.trim().isEmpty) return;
-    setState(() {
-      messages.add({
-        'text': text,
-        'isSent': true,
-        'timestamp': DateTime.now(),
+  @override
+  void initState() {
+    super.initState();
+    _getMessages();
+  }
+
+  // Mesajları sunucudan almak için API isteği
+  Future<void> _getMessages() async {
+    final response = await http.get(
+      Uri.parse('http://192.168.210.249:5006/get_messages/${widget.senderUsername}/${widget.receiverUsername}'),
+    );
+
+    if (response.statusCode == 200) {
+      final List<dynamic> data = jsonDecode(response.body);
+      setState(() {
+        messages = data.map((msg) {
+          return {
+            'text': msg['text'],
+            'isSent': msg['sender'] == widget.senderUsername, // Mesajın gönderilip gönderilmediği
+            'timestamp': DateTime.parse(msg['timestamp']),
+          };
+        }).toList();
       });
-    });
-    _controller.clear();
+    } else {
+      print('Mesajlar alınamadı');
+    }
   }
 
-  void editMessage(int index, String newText) {
-    setState(() {
-      messages[index]['text'] = newText;
-    });
-  }
+  // Mesaj gönderme fonksiyonu
+  Future<void> sendMessage(String text) async {
+    if (text.trim().isEmpty) return;
 
-  void deleteMessage(int index) {
-    setState(() {
-      messages.removeAt(index);
-    });
-  }
+    final response = await http.post(
+      Uri.parse('http://192.168.210.249:5006/send_message'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'message': text,
+        'sender': widget.senderUsername,  // Sender, widget'tan alınıyor
+        'receiver': widget.receiverUsername,  // Receiver, widget'tan alınıyor
+      }),
+    );
 
-  void replyToMessage(String replyText) {
-    setState(() {
-      _replyToMessageIndex = messages.length - 1; // Yeni mesaj, son mesajın altına eklenecek
-      sendMessage(replyText);
-    });
+    if (response.statusCode == 200) {
+      setState(() {
+        messages.add({
+          'text': text,
+          'isSent': true,
+          'timestamp': DateTime.now(),
+        });
+      });
+      _controller.clear();
+    } else {
+      print('Mesaj gönderilemedi');
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return WillPopScope(
       onWillPop: () async {
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (context) => const HomePage()),
-        );
+        Navigator.of(context).pop();
         return false;
       },
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Güvercin Sohbeti'),
+          actions: [
+            Padding(
+              padding: const EdgeInsets.all(8.0),
+              child: Text(
+                widget.receiverUsername.isNotEmpty
+                    ? widget.receiverUsername
+                    : 'Yükleniyor...',
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
         ),
         body: Column(
           children: [
@@ -70,111 +106,17 @@ class _ChatPageState extends State<ChatPage> {
                 itemCount: messages.length,
                 itemBuilder: (context, index) {
                   final message = messages[messages.length - 1 - index];
-                  return Dismissible(
-                    key: Key(message['timestamp'].toString()),
-                    direction: message['isSent']
-                        ? DismissDirection.endToStart
-                        : DismissDirection.startToEnd,
-                    onDismissed: (direction) {
-                      if (direction == DismissDirection.endToStart && message['isSent']) {
-                        replyToMessage('Yanıt: ${message['text']}');
-                      } else if (direction == DismissDirection.startToEnd && !message['isSent']) {
-                        replyToMessage('Yanıt: ${message['text']}');
-                      }
-                    },
-                    background: Container(
-                      alignment: message['isSent']
-                          ? Alignment.centerRight
-                          : Alignment.centerLeft,
-                      color: Colors.blueAccent,
-                      padding: const EdgeInsets.symmetric(horizontal: 20.0),
-                      child: const Icon(
-                        Icons.reply,
-                        color: Colors.white,
-                      ),
-                    ),
-                    secondaryBackground: Container(
-                      alignment: message['isSent']
-                          ? Alignment.centerRight
-                          : Alignment.centerLeft,
-                      color: Colors.redAccent,
-                      padding: const EdgeInsets.symmetric(horizontal: 20.0),
-                      child: const Icon(
-                        Icons.reply,
-                        color: Colors.white,
-                      ),
-                    ),
-                    child: GestureDetector(
-                      onLongPress: () async {
-                        final action = await showDialog<String>(
-                          context: context,
-                          builder: (BuildContext context) {
-                            return SimpleDialog(
-                              title: const Text('Mesaj İşlemleri'),
-                              children: <Widget>[
-                                SimpleDialogOption(
-                                  onPressed: () => Navigator.pop(context, 'edit'),
-                                  child: const Text('Düzenle'),
-                                ),
-                                SimpleDialogOption(
-                                  onPressed: () => Navigator.pop(context, 'delete'),
-                                  child: const Text('Sil'),
-                                ),
-                              ],
-                            );
-                          },
-                        );
-
-                        if (action == 'edit') {
-                          final TextEditingController editController = TextEditingController(text: message['text']);
-                          final newText = await showDialog<String>(
-                            context: context,
-                            builder: (BuildContext context) {
-                              return AlertDialog(
-                                title: const Text('Mesajı Düzenle'),
-                                content: TextField(
-                                  controller: editController,
-                                  decoration: const InputDecoration(hintText: 'Yeni mesajı girin'),
-                                ),
-                                actions: <Widget>[
-                                  TextButton(
-                                    onPressed: () => Navigator.pop(context, null),
-                                    child: const Text('İptal'),
-                                  ),
-                                  TextButton(
-                                    onPressed: () => Navigator.pop(context, editController.text),
-                                    child: const Text('Kaydet'),
-                                  ),
-                                ],
-                              );
-                            },
-                          );
-
-                          if (newText != null && newText.trim().isNotEmpty) {
-                            editMessage(messages.length - 1 - index, newText);
-                          }
-                        } else if (action == 'delete') {
-                          deleteMessage(messages.length - 1 - index);
-                        }
-                      },
-                      onDoubleTap: () {
-                        setState(() {
-                          // Mesaja iki kez tıklanıldığında, replyToMessage fonksiyonu ile cevap ekleyebiliriz
-                          _controller.text = '${message['text']}\n'; // Yanıt olarak mesajın ön izlemesi
-                        });
-                      },
-                      child: MessageBubble(
-                        text: message['text'],
-                        isSent: message['isSent'],
-                        timestamp: message['timestamp'],
-                      ),
-                    ),
+                  return MessageBubble(
+                    text: message['text'],
+                    isSent: message['isSent'],
+                    timestamp: message['timestamp'],
                   );
                 },
               ),
             ),
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
               child: Row(
                 children: [
                   Expanded(
@@ -209,7 +151,8 @@ class MessageBubble extends StatelessWidget {
   final bool isSent;
   final DateTime timestamp;
 
-  const MessageBubble({super.key, 
+  const MessageBubble({
+    super.key,
     required this.text,
     required this.isSent,
     required this.timestamp,
@@ -217,7 +160,8 @@ class MessageBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final time = '${timestamp.hour}:${timestamp.minute.toString().padLeft(2, '0')}';
+    final time =
+        '${timestamp.hour}:${timestamp.minute.toString().padLeft(2, '0')}';
 
     return Align(
       alignment: isSent ? Alignment.centerRight : Alignment.centerLeft,
@@ -232,6 +176,7 @@ class MessageBubble extends StatelessWidget {
           crossAxisAlignment:
               isSent ? CrossAxisAlignment.end : CrossAxisAlignment.start,
           children: [
+            const SizedBox(height: 4.0),
             Text(
               text,
               style: TextStyle(
