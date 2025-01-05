@@ -7,6 +7,8 @@ void main() {
 }
 
 class seachPage extends StatelessWidget {
+  const seachPage({super.key});
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
@@ -20,6 +22,8 @@ class seachPage extends StatelessWidget {
 }
 
 class UserCheckPage extends StatefulWidget {
+  const UserCheckPage({super.key});
+
   @override
   _UserCheckPageState createState() => _UserCheckPageState();
 }
@@ -31,7 +35,7 @@ class _UserCheckPageState extends State<UserCheckPage> {
   // Kullanıcı adı kontrol fonksiyonu
   Future<void> checkUser(String username) async {
     final response = await http.get(
-      Uri.parse('http://192.168.220.249:5005/check_user?username=$username'),
+      Uri.parse('http://192.168.210.249:5005/check_user?username=$username'),
     );
 
     if (response.statusCode == 200) {
@@ -49,7 +53,7 @@ class _UserCheckPageState extends State<UserCheckPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Kullanıcı Kontrol'),
+        title: const Text('Kullanıcı Kontrol'),
       ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
@@ -57,12 +61,12 @@ class _UserCheckPageState extends State<UserCheckPage> {
           children: [
             TextField(
               controller: _controller,
-              decoration: InputDecoration(
+              decoration: const InputDecoration(
                 labelText: 'Kullanıcı Adı',
                 border: OutlineInputBorder(),
               ),
             ),
-            SizedBox(height: 20),
+            const SizedBox(height: 20),
             ElevatedButton(
               onPressed: () {
                 final username = _controller.text.trim();
@@ -70,10 +74,10 @@ class _UserCheckPageState extends State<UserCheckPage> {
                   checkUser(username);
                 }
               },
-              child: Text('Kontrol Et'),
+              child: const Text('Kontrol Et'),
             ),
-            SizedBox(height: 20),
-            Text(_message, style: TextStyle(fontSize: 18)),
+            const SizedBox(height: 20),
+            Text(_message, style: const TextStyle(fontSize: 18)),
           ],
         ),
       ),

@@ -2,18 +2,20 @@ import 'package:flutter/material.dart';
 import 'package:guvercin/home/home.dart';
 
 class ChatPage extends StatefulWidget {
+  const ChatPage({super.key});
+
   @override
   _ChatPageState createState() => _ChatPageState();
 }
 
 class _ChatPageState extends State<ChatPage> {
   List<Map<String, dynamic>> messages = [
-    {'text': 'Merhaba!', 'isSent': true, 'timestamp': DateTime.now().subtract(Duration(minutes: 5))},
-    {'text': 'Merhaba, nasılsınız?', 'isSent': false, 'timestamp': DateTime.now().subtract(Duration(minutes: 4))},
-    {'text': 'İyiyim, teşekkürler. Siz?', 'isSent': true, 'timestamp': DateTime.now().subtract(Duration(minutes: 3))},
+    {'text': 'Merhaba!', 'isSent': true, 'timestamp': DateTime.now().subtract(const Duration(minutes: 5))},
+    {'text': 'Merhaba, nasılsınız?', 'isSent': false, 'timestamp': DateTime.now().subtract(const Duration(minutes: 4))},
+    {'text': 'İyiyim, teşekkürler. Siz?', 'isSent': true, 'timestamp': DateTime.now().subtract(const Duration(minutes: 3))},
   ];
 
-  TextEditingController _controller = TextEditingController();
+  final TextEditingController _controller = TextEditingController();
   int? _replyToMessageIndex; // Yalnızca cevap verilen mesajın index'ini tutar
 
   void sendMessage(String text) {
@@ -52,13 +54,13 @@ class _ChatPageState extends State<ChatPage> {
     return WillPopScope(
       onWillPop: () async {
         Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (context) => HomePage()),
+          MaterialPageRoute(builder: (context) => const HomePage()),
         );
         return false;
       },
       child: Scaffold(
         appBar: AppBar(
-          title: Text('Güvercin Sohbeti'),
+          title: const Text('Güvercin Sohbeti'),
         ),
         body: Column(
           children: [
@@ -85,8 +87,8 @@ class _ChatPageState extends State<ChatPage> {
                           ? Alignment.centerRight
                           : Alignment.centerLeft,
                       color: Colors.blueAccent,
-                      padding: EdgeInsets.symmetric(horizontal: 20.0),
-                      child: Icon(
+                      padding: const EdgeInsets.symmetric(horizontal: 20.0),
+                      child: const Icon(
                         Icons.reply,
                         color: Colors.white,
                       ),
@@ -96,8 +98,8 @@ class _ChatPageState extends State<ChatPage> {
                           ? Alignment.centerRight
                           : Alignment.centerLeft,
                       color: Colors.redAccent,
-                      padding: EdgeInsets.symmetric(horizontal: 20.0),
-                      child: Icon(
+                      padding: const EdgeInsets.symmetric(horizontal: 20.0),
+                      child: const Icon(
                         Icons.reply,
                         color: Colors.white,
                       ),
@@ -108,15 +110,15 @@ class _ChatPageState extends State<ChatPage> {
                           context: context,
                           builder: (BuildContext context) {
                             return SimpleDialog(
-                              title: Text('Mesaj İşlemleri'),
+                              title: const Text('Mesaj İşlemleri'),
                               children: <Widget>[
                                 SimpleDialogOption(
                                   onPressed: () => Navigator.pop(context, 'edit'),
-                                  child: Text('Düzenle'),
+                                  child: const Text('Düzenle'),
                                 ),
                                 SimpleDialogOption(
                                   onPressed: () => Navigator.pop(context, 'delete'),
-                                  child: Text('Sil'),
+                                  child: const Text('Sil'),
                                 ),
                               ],
                             );
@@ -129,19 +131,19 @@ class _ChatPageState extends State<ChatPage> {
                             context: context,
                             builder: (BuildContext context) {
                               return AlertDialog(
-                                title: Text('Mesajı Düzenle'),
+                                title: const Text('Mesajı Düzenle'),
                                 content: TextField(
                                   controller: editController,
-                                  decoration: InputDecoration(hintText: 'Yeni mesajı girin'),
+                                  decoration: const InputDecoration(hintText: 'Yeni mesajı girin'),
                                 ),
                                 actions: <Widget>[
                                   TextButton(
                                     onPressed: () => Navigator.pop(context, null),
-                                    child: Text('İptal'),
+                                    child: const Text('İptal'),
                                   ),
                                   TextButton(
                                     onPressed: () => Navigator.pop(context, editController.text),
-                                    child: Text('Kaydet'),
+                                    child: const Text('Kaydet'),
                                   ),
                                 ],
                               );
@@ -186,9 +188,9 @@ class _ChatPageState extends State<ChatPage> {
                       ),
                     ),
                   ),
-                  SizedBox(width: 8.0),
+                  const SizedBox(width: 8.0),
                   IconButton(
-                    icon: Icon(Icons.send),
+                    icon: const Icon(Icons.send),
                     onPressed: () => sendMessage(_controller.text),
                     color: Theme.of(context).primaryColor,
                   ),
@@ -207,7 +209,7 @@ class MessageBubble extends StatelessWidget {
   final bool isSent;
   final DateTime timestamp;
 
-  const MessageBubble({
+  const MessageBubble({super.key, 
     required this.text,
     required this.isSent,
     required this.timestamp,
@@ -220,8 +222,8 @@ class MessageBubble extends StatelessWidget {
     return Align(
       alignment: isSent ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
-        margin: EdgeInsets.symmetric(vertical: 4.0, horizontal: 8.0),
-        padding: EdgeInsets.symmetric(vertical: 10.0, horizontal: 14.0),
+        margin: const EdgeInsets.symmetric(vertical: 4.0, horizontal: 8.0),
+        padding: const EdgeInsets.symmetric(vertical: 10.0, horizontal: 14.0),
         decoration: BoxDecoration(
           color: isSent ? Colors.blue : Colors.grey[300],
           borderRadius: BorderRadius.circular(20.0),
@@ -237,7 +239,7 @@ class MessageBubble extends StatelessWidget {
                 fontSize: 16.0,
               ),
             ),
-            SizedBox(height: 4.0),
+            const SizedBox(height: 4.0),
             Text(
               time,
               style: TextStyle(
