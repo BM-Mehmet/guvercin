@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:guvercin/chat_page/chat.dart';
+import 'package:guvercin/search/search.dart';
 import 'package:guvercin/settings/settings_page.dart';
 
 void main() {
@@ -93,18 +93,7 @@ class _HomeScreenState extends State<HomePage> {
                 );
               },
             ),
-            // Arama butonunu burada, altta yerleştiriyoruz
-            IconButton(
-              icon: const Icon(Icons.search, size: 30),
-              onPressed: () {
-                setState(() {
-                  _isSearching = !_isSearching;
-                  if (!_isSearching) {
-                    _searchController.clear();
-                  }
-                });
-              },
-            ),
+
             // Yeni mesaj başlatma butonu
             IconButton(
               icon: const Icon(Icons.message, size: 30),
@@ -112,7 +101,7 @@ class _HomeScreenState extends State<HomePage> {
                         Navigator.pushReplacement(
                   context,
                   MaterialPageRoute(
-                      builder: (context) => ChatPage()),
+                      builder: (context) => seachPage()),
                 );
               },
             ),
