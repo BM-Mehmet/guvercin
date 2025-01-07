@@ -6,7 +6,7 @@ import 'package:jwt_decoder/jwt_decoder.dart';  // JWT token çözümlemek için
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';  // Güvenli depolama için ekliyoruz
 
 // Güvenli depolama için _secureStorage değişkenini tanımlıyoruz
-final FlutterSecureStorage _secureStorage = FlutterSecureStorage();
+final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
 
 class SearchPage extends StatelessWidget {
   const SearchPage({super.key});

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'dart:async';
 
 class ChatPage extends StatefulWidget {
   final String senderUsername;
@@ -19,11 +20,21 @@ class ChatPage extends StatefulWidget {
 class _ChatPageState extends State<ChatPage> {
   List<Map<String, dynamic>> messages = [];
   final TextEditingController _controller = TextEditingController();
+  late Timer _messageTimer;
 
   @override
   void initState() {
     super.initState();
-    _getMessages();
+    _getMessages(); // İlk mesajları al
+    _messageTimer = Timer.periodic(Duration(seconds: 5), (timer) {
+      _getMessages(); // Her 5 saniyede bir yeni mesajları al
+    });
+  }
+
+  @override
+  void dispose() {
+    _messageTimer.cancel(); // Timer'ı durdur
+    super.dispose();
   }
 
   // Mesajları sunucudan almak için API isteği
@@ -34,12 +45,14 @@ class _ChatPageState extends State<ChatPage> {
 
     if (response.statusCode == 200) {
       final List<dynamic> data = jsonDecode(response.body);
+
       setState(() {
+        // Yeni mesajları ekleyelim (eski mesajları sıfırlayalım)
         messages = data.map((msg) {
           return {
-            'text': msg['text'],
-            'isSent': msg['sender'] == widget.senderUsername, // Mesajın gönderilip gönderilmediği
-            'timestamp': DateTime.parse(msg['timestamp']),
+            'text': msg['message'],  // Mesajın metni
+            'isSent': msg['sender'] == widget.senderUsername,  // Mesajın gönderilip gönderilmediği
+            'timestamp': DateTime.fromMillisecondsSinceEpoch(msg['timestamp'] * 1000), // Zaman damgası
           };
         }).toList();
       });
