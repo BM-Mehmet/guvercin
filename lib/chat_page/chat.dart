@@ -40,7 +40,7 @@ class _ChatPageState extends State<ChatPage> {
   // Mesajları sunucudan almak için API isteği
   Future<void> _getMessages() async {
     final response = await http.get(
-      Uri.parse('http://192.168.210.249:5006/get_messages/${widget.senderUsername}/${widget.receiverUsername}'),
+      Uri.parse('http://192.168.126.46:5006/get_messages/${widget.senderUsername}/${widget.receiverUsername}'),
     );
 
     if (response.statusCode == 200) {
@@ -66,7 +66,7 @@ class _ChatPageState extends State<ChatPage> {
     if (text.trim().isEmpty) return;
 
     final response = await http.post(
-      Uri.parse('http://192.168.210.249:5006/send_message'),
+      Uri.parse('http://192.168.126.46:5006/send_message'),
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({
         'message': text,

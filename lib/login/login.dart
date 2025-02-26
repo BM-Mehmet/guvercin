@@ -42,7 +42,7 @@ class _CheckTokenScreenState extends State<CheckTokenScreen> {
     if (token != null) {
       // Token geçerli mi kontrol et
       final response = await http.post(
-        Uri.parse('http://192.168.210.249:5001/check-session'),
+        Uri.parse('http://192.168.126.46:5001/check-session'),
         headers: {'Content-Type': 'application/json'},
         body: json.encode({'token': token}),
       );
@@ -138,7 +138,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
     // HTTP POST isteği
     final response = await http.post(
-      Uri.parse('http://192.168.210.249:5001/login'), // Sunucu adresinizi buraya yazın
+      Uri.parse('http://192.168.126.46:5001/login'), // Sunucu adresinizi buraya yazın
       headers: {'Content-Type': 'application/json'},
       body: json.encode({
         'username': username,
