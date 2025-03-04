@@ -41,7 +41,7 @@ dependencies:
   firebase_messaging: ^15.1.5
   flutter_secure_storage: ^8.0.0
   qr_flutter: ^4.1.0
-  barcode_scan2: ^4.2.0
+  barcode_scan2: ^4.5.0
   device_info_plus: ^9.0.2
   jwt_decoder: ^2.0.1
   web_socket_channel: ^2.0.0 

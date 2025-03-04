@@ -51,7 +51,7 @@ class _HomeScreenState extends State<HomePage> {
     if (token == null || _username == null) return [];
 
     var response = await http.get(
-      Uri.parse('http://192.168.126.46:5007/chats/$_username'),
+      Uri.parse('http://98.66.234.35:5002/chats/$_username'),
       headers: {'Authorization': 'Bearer $token'},
     );
 
