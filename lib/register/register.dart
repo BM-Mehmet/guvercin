@@ -133,7 +133,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     }
     // Sunucuya HTTP POST isteği gönderme
     final response = await http.post(
-      Uri.parse('http://98.66.234.35:5000/register'),
+      Uri.parse('http://192.168.144.46:5000/register'),
       headers: {'Content-Type': 'application/json'},
       body: json.encode({
         'username': username,

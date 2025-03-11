@@ -1,17 +1,13 @@
-import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import 'dart:convert';
-import 'dart:async';
+import 'package:flutter/material.dart';
+import 'package:web_socket_channel/web_socket_channel.dart';
+import 'package:http/http.dart' as http;
 
 class ChatPage extends StatefulWidget {
   final String senderUsername;
   final String receiverUsername;
 
-  const ChatPage({
-    super.key,
-    required this.senderUsername,
-    required this.receiverUsername,
-  });
+  ChatPage({required this.senderUsername, required this.receiverUsername});
 
   @override
   _ChatPageState createState() => _ChatPageState();
@@ -20,73 +16,106 @@ class ChatPage extends StatefulWidget {
 class _ChatPageState extends State<ChatPage> {
   List<Map<String, dynamic>> messages = [];
   final TextEditingController _controller = TextEditingController();
-  late Timer _messageTimer;
+  late WebSocketChannel _channel;
 
   @override
   void initState() {
     super.initState();
+    _connectWebSocket(); // WebSocket bağlantısını başlat
     _getMessages(); // İlk mesajları al
-    _messageTimer = Timer.periodic(Duration(seconds: 5), (timer) {
-      _getMessages(); // Her 5 saniyede bir yeni mesajları al
-    });
   }
+
+
+Future<void> _getMessages() async {
+  try {
+    final response = await http.get(
+      Uri.parse('http://192.168.144.46:5004/get_messages/${widget.senderUsername}/${widget.receiverUsername}'),
+    );
+
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      print('API Response: $data');  // Gelen veriyi konsolda görmek için
+
+      if (data is List) {
+        setState(() {
+          // API'den gelen her mesajı kontrol ederek, zaten eklenip eklenmediğini kontrol et
+          for (var msg in data) {
+            // Aynı message_id ve timestamp'li mesajları eklememek için kontrol
+            if (!messages.any((existingMsg) =>
+                existingMsg['message_id'] == msg['message_id'] &&
+                existingMsg['timestamp'] == DateTime.fromMillisecondsSinceEpoch(msg['timestamp'] * 1000))) {
+              messages.add({
+                'message_id': msg['message_id'],
+                'text': msg['message'],
+                'isSent': msg['sender'] == widget.senderUsername,
+                'timestamp': DateTime.fromMillisecondsSinceEpoch(msg['timestamp'] * 1000),
+              });
+            }
+          }
+        });
+      }
+    } else {
+      print('API Error: ${response.statusCode}');
+      print('Error response body: ${response.body}');
+    }
+  } catch (e) {
+    print('Request error: $e');
+  }
+}
+
+void _connectWebSocket() {
+  final url = 'ws://192.168.144.46:5004/ws/${widget.senderUsername}';
+  _channel = WebSocketChannel.connect(Uri.parse(url));
+
+  _channel.stream.listen((message) {
+    final msg = jsonDecode(message);
+
+    // WebSocket'ten gelen mesajın message_id ve timestamp değerlerinin daha önce eklenip eklenmediğini kontrol et
+    if (!messages.any((existingMsg) =>
+        existingMsg['message_id'] == msg['message_id'] &&
+        existingMsg['timestamp'] == DateTime.fromMillisecondsSinceEpoch(msg['timestamp'] * 1000))) {
+      setState(() {
+        messages.add({
+          'message_id': msg['message_id'],
+          'text': msg['message'],
+          'isSent': msg['sender'] == widget.senderUsername,
+          'timestamp': DateTime.fromMillisecondsSinceEpoch(msg['timestamp'] * 1000),
+        });
+      });
+    }
+  });
+}
+
+
 
   @override
   void dispose() {
-    _messageTimer.cancel(); // Timer'ı durdur
+    _channel.sink.close(); // WebSocket bağlantısını kapat
     super.dispose();
   }
 
-  // Mesajları sunucudan almak için API isteği
-  Future<void> _getMessages() async {
-    final response = await http.get(
-      Uri.parse('http://192.168.126.46:5006/get_messages/${widget.senderUsername}/${widget.receiverUsername}'),
-    );
-
-    if (response.statusCode == 200) {
-      final List<dynamic> data = jsonDecode(response.body);
-
-      setState(() {
-        // Yeni mesajları ekleyelim (eski mesajları sıfırlayalım)
-        messages = data.map((msg) {
-          return {
-            'text': msg['message'],  // Mesajın metni
-            'isSent': msg['sender'] == widget.senderUsername,  // Mesajın gönderilip gönderilmediği
-            'timestamp': DateTime.fromMillisecondsSinceEpoch(msg['timestamp'] * 1000), // Zaman damgası
-          };
-        }).toList();
-      });
-    } else {
-      print('Mesajlar alınamadı');
-    }
-  }
-
   // Mesaj gönderme fonksiyonu
-  Future<void> sendMessage(String text) async {
+  void sendMessage(String text) {
     if (text.trim().isEmpty) return;
 
-    final response = await http.post(
-      Uri.parse('http://192.168.126.46:5006/send_message'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({
-        'message': text,
-        'sender': widget.senderUsername,  // Sender, widget'tan alınıyor
-        'receiver': widget.receiverUsername,  // Receiver, widget'tan alınıyor
-      }),
-    );
+    final messageData = {
+      'message': text,
+      'sender': widget.senderUsername,
+      'receiver': widget.receiverUsername,
+    };
 
-    if (response.statusCode == 200) {
-      setState(() {
-        messages.add({
-          'text': text,
-          'isSent': true,
-          'timestamp': DateTime.now(),
-        });
+    // Mesajı WebSocket üzerinden gönder
+    _channel.sink.add(jsonEncode(messageData));
+
+    setState(() {
+      messages.add({
+        'text': text,
+        'isSent': true,
+        'timestamp': DateTime.now(),
       });
-      _controller.clear();
-    } else {
-      print('Mesaj gönderilemedi');
-    }
+    });
+
+    _controller.clear();
   }
 
   @override
@@ -165,47 +194,43 @@ class MessageBubble extends StatelessWidget {
   final DateTime timestamp;
 
   const MessageBubble({
-    super.key,
+    Key? key,
     required this.text,
     required this.isSent,
     required this.timestamp,
-  });
+  }) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
-    final time =
-        '${timestamp.hour}:${timestamp.minute.toString().padLeft(2, '0')}';
-
-    return Align(
-      alignment: isSent ? Alignment.centerRight : Alignment.centerLeft,
-      child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 4.0, horizontal: 8.0),
-        padding: const EdgeInsets.symmetric(vertical: 10.0, horizontal: 14.0),
-        decoration: BoxDecoration(
-          color: isSent ? Colors.blue : Colors.grey[300],
-          borderRadius: BorderRadius.circular(20.0),
-        ),
-        child: Column(
-          crossAxisAlignment:
-              isSent ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-          children: [
-            const SizedBox(height: 4.0),
-            Text(
-              text,
-              style: TextStyle(
-                color: isSent ? Colors.white : Colors.black,
-                fontSize: 16.0,
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 10.0),
+      child: Align(
+        alignment: isSent ? Alignment.centerRight : Alignment.centerLeft,
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 10.0, horizontal: 15.0),
+          decoration: BoxDecoration(
+            color: isSent ? Colors.blueAccent : Colors.grey[200],
+            borderRadius: BorderRadius.circular(20.0),
+          ),
+          child: Column(
+            crossAxisAlignment: isSent ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+            children: [
+              Text(
+                text,
+                style: TextStyle(
+                  color: isSent ? Colors.white : Colors.black,
+                ),
               ),
-            ),
-            const SizedBox(height: 4.0),
-            Text(
-              time,
-              style: TextStyle(
-                color: isSent ? Colors.white70 : Colors.black54,
-                fontSize: 12.0,
+              const SizedBox(height: 5.0),
+              Text(
+                '${timestamp.hour}:${timestamp.minute}',
+                style: TextStyle(
+                  color: isSent ? Colors.white70 : Colors.black45,
+                  fontSize: 12.0,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
