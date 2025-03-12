@@ -38,7 +38,7 @@ class _UserCheckPageState extends State<UserCheckPage> {
 
   Future<void> checkUser(String username) async {
     final response = await http.get(
-      Uri.parse('http://192.168.144.46:5003/check_user?username=$username'),
+      Uri.parse('http://98.66.234.35:5003/check_user?username=$username'),
     );
 
     if (response.statusCode == 200) {

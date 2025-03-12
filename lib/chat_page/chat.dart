@@ -29,7 +29,7 @@ class _ChatPageState extends State<ChatPage> {
 Future<void> _getMessages() async {
   try {
     final response = await http.get(
-      Uri.parse('http://192.168.144.46:5004/get_messages/${widget.senderUsername}/${widget.receiverUsername}'),
+      Uri.parse('http://98.66.234.35:5004/get_messages/${widget.senderUsername}/${widget.receiverUsername}'),
     );
 
     if (response.statusCode == 200) {
@@ -64,7 +64,7 @@ Future<void> _getMessages() async {
 }
 
 void _connectWebSocket() {
-  final url = 'ws://192.168.144.46:5004/ws/${widget.senderUsername}';
+  final url = 'ws://98.66.234.35:5004/ws/${widget.senderUsername}';
   _channel = WebSocketChannel.connect(Uri.parse(url));
 
   _channel.stream.listen((message) {
