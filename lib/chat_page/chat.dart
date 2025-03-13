@@ -21,42 +21,37 @@ class _ChatPageState extends State<ChatPage> {
   @override
   void initState() {
     super.initState();
-    _connectWebSocket(); // WebSocket bağlantısını başlat
-    _getMessages(); // İlk mesajları al
+    _connectWebSocket();
+    _getMessages();
   }
-
 
 Future<void> _getMessages() async {
   try {
     final response = await http.get(
-      Uri.parse('http://98.66.234.35:5004/get_messages/${widget.senderUsername}/${widget.receiverUsername}'),
+      Uri.parse(
+          'http://98.66.234.35:5004/get_messages/${widget.senderUsername}/${widget.receiverUsername}'),
     );
 
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
-      print('API Response: $data');  // Gelen veriyi konsolda görmek için
+      print('API Response: $data');
 
       if (data is List) {
         setState(() {
-          // API'den gelen her mesajı kontrol ederek, zaten eklenip eklenmediğini kontrol et
+          messages.clear(); // Önce listeyi temizleyelim ki tekrar eklenmesin
           for (var msg in data) {
-            // Aynı message_id ve timestamp'li mesajları eklememek için kontrol
-            if (!messages.any((existingMsg) =>
-                existingMsg['message_id'] == msg['message_id'] &&
-                existingMsg['timestamp'] == DateTime.fromMillisecondsSinceEpoch(msg['timestamp'] * 1000))) {
-              messages.add({
-                'message_id': msg['message_id'],
-                'text': msg['message'],
-                'isSent': msg['sender'] == widget.senderUsername,
-                'timestamp': DateTime.fromMillisecondsSinceEpoch(msg['timestamp'] * 1000),
-              });
-            }
+            messages.add({
+              'message_id': msg['message_id'],
+              'text': msg['message'],
+              'isSent': msg['sender'] == widget.senderUsername,
+              'timestamp': DateTime.fromMillisecondsSinceEpoch(
+                  msg['timestamp'] * 1000),
+            });
           }
         });
       }
     } else {
       print('API Error: ${response.statusCode}');
-      print('Error response body: ${response.body}');
     }
   } catch (e) {
     print('Request error: $e');
@@ -69,20 +64,21 @@ void _connectWebSocket() {
 
   _channel.stream.listen((message) {
     final msg = jsonDecode(message);
+    
+    print("Gelen mesaj: $msg");
 
-    // WebSocket'ten gelen mesajın message_id ve timestamp değerlerinin daha önce eklenip eklenmediğini kontrol et
-    if (!messages.any((existingMsg) =>
-        existingMsg['message_id'] == msg['message_id'] &&
-        existingMsg['timestamp'] == DateTime.fromMillisecondsSinceEpoch(msg['timestamp'] * 1000))) {
-      setState(() {
-        messages.add({
-          'message_id': msg['message_id'],
-          'text': msg['message'],
-          'isSent': msg['sender'] == widget.senderUsername,
-          'timestamp': DateTime.fromMillisecondsSinceEpoch(msg['timestamp'] * 1000),
-        });
+    setState(() {
+      messages.add({
+        'message_id': msg['message_id'],
+        'text': msg['message'],
+        'isSent': msg['sender'] == widget.senderUsername,
+        'timestamp': msg['timestamp'] != null
+            ? DateTime.fromMillisecondsSinceEpoch(msg['timestamp'] * 1000)
+            : DateTime.now(),  // Eğer timestamp null ise şimdiki zamanı kullan
       });
-    }
+    });
+  }, onError: (error) {
+    print('WebSocket Hatası: $error');
   });
 }
 
@@ -90,11 +86,10 @@ void _connectWebSocket() {
 
   @override
   void dispose() {
-    _channel.sink.close(); // WebSocket bağlantısını kapat
+    _channel.sink.close();
     super.dispose();
   }
 
-  // Mesaj gönderme fonksiyonu
   void sendMessage(String text) {
     if (text.trim().isEmpty) return;
 
@@ -104,7 +99,6 @@ void _connectWebSocket() {
       'receiver': widget.receiverUsername,
     };
 
-    // Mesajı WebSocket üzerinden gönder
     _channel.sink.add(jsonEncode(messageData));
 
     setState(() {
@@ -132,9 +126,7 @@ void _connectWebSocket() {
             Padding(
               padding: const EdgeInsets.all(8.0),
               child: Text(
-                widget.receiverUsername.isNotEmpty
-                    ? widget.receiverUsername
-                    : 'Yükleniyor...',
+                widget.receiverUsername,
                 style: const TextStyle(fontWeight: FontWeight.bold),
               ),
             ),
@@ -144,10 +136,9 @@ void _connectWebSocket() {
           children: [
             Expanded(
               child: ListView.builder(
-                reverse: true,
                 itemCount: messages.length,
                 itemBuilder: (context, index) {
-                  final message = messages[messages.length - 1 - index];
+                  final message = messages[index];
                   return MessageBubble(
                     text: message['text'],
                     isSent: message['isSent'],
@@ -157,8 +148,7 @@ void _connectWebSocket() {
               ),
             ),
             Padding(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+              padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
               child: Row(
                 children: [
                   Expanded(
@@ -213,7 +203,8 @@ class MessageBubble extends StatelessWidget {
             borderRadius: BorderRadius.circular(20.0),
           ),
           child: Column(
-            crossAxisAlignment: isSent ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+            crossAxisAlignment:
+                isSent ? CrossAxisAlignment.end : CrossAxisAlignment.start,
             children: [
               Text(
                 text,
