@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:guvercin/account/delete/delete_account.dart';
 import 'package:guvercin/home/home.dart';
 import 'package:guvercin/transer_account/export_keys/exportkeys.dart';
 import 'package:guvercin/transer_account/import_keys/import_keys.dart';
@@ -48,6 +49,16 @@ class SettingsPage extends StatelessWidget {
                   );
                 },
                 child: const Text('Anahtarları İçe Aktar'),
+              ),
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => DeleteAccount()),
+                  );
+                },
+                child: const Text('Hesabı sil'),
               ),
             ],
           ),

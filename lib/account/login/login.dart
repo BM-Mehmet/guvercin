@@ -39,10 +39,11 @@ class _CheckTokenScreenState extends State<CheckTokenScreen> {
   Future<void> _checkToken() async {
     String? token = await _secureStorage.read(key: 'auth_token');
 
-    if (token != null) {
+    if (token   != null) {
       // Token geçerli mi kontrol et
       final response = await http.post(
         Uri.parse('http://98.66.234.35:5001/check-session'),
+        //  Uri.parse('http://192.168.77.46:5001/check-session'),
         headers: {'Content-Type': 'application/json'},
         body: json.encode({'token': token}),
       );
@@ -139,6 +140,7 @@ class _LoginScreenState extends State<LoginScreen> {
     // HTTP POST isteği
     final response = await http.post(
       Uri.parse('http://98.66.234.35:5001/login'), // Sunucu adresinizi buraya yazın
+      // Uri.parse('http://192.168.77:5001/login'), // Sunucu adresinizi buraya yazın
       headers: {'Content-Type': 'application/json'},
       body: json.encode({
         'username': username,

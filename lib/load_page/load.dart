@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'package:guvercin/login/login.dart';
-import 'package:guvercin/register/register.dart';
+import 'package:guvercin/account/login/login.dart';
+import 'package:guvercin/account/register/register.dart';
 import 'package:guvercin/transer_account/transfer_account.dart';
 
 class LoadPage extends StatelessWidget {

@@ -25,64 +25,64 @@ class _ChatPageState extends State<ChatPage> {
     _getMessages();
   }
 
-Future<void> _getMessages() async {
-  try {
-    final response = await http.get(
-      Uri.parse(
-          'http://98.66.234.35:5004/get_messages/${widget.senderUsername}/${widget.receiverUsername}'),
-    );
+  Future<void> _getMessages() async {
+    try {
+      final response = await http.get(
+        Uri.parse(
+            'http://98.66.234.35:5004/get_messages/${widget.senderUsername}/${widget.receiverUsername}'),
+        // Uri.parse(
+        //     'http://192.168.77.46:5004/get_messages/${widget.senderUsername}/${widget.receiverUsername}'),
+      );
 
-    if (response.statusCode == 200) {
-      final data = jsonDecode(response.body);
-      print('API Response: $data');
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        print('API Response: $data');
 
-      if (data is List) {
-        setState(() {
-          messages.clear(); // Önce listeyi temizleyelim ki tekrar eklenmesin
-          for (var msg in data) {
-            messages.add({
-              'message_id': msg['message_id'],
-              'text': msg['message'],
-              'isSent': msg['sender'] == widget.senderUsername,
-              'timestamp': DateTime.fromMillisecondsSinceEpoch(
-                  msg['timestamp'] * 1000),
-            });
-          }
-        });
+        if (data is List) {
+          setState(() {
+            messages.clear(); // Önce listeyi temizleyelim ki tekrar eklenmesin
+            for (var msg in data) {
+              messages.add({
+                'message_id': msg['message_id'],
+                'text': msg['message'],
+                'isSent': msg['sender'] == widget.senderUsername,
+                'timestamp': DateTime.fromMillisecondsSinceEpoch(
+                    msg['timestamp'] * 1000),
+              });
+            }
+          });
+        }
+      } else {
+        print('API Error: ${response.statusCode}');
       }
-    } else {
-      print('API Error: ${response.statusCode}');
+    } catch (e) {
+      print('Request error: $e');
     }
-  } catch (e) {
-    print('Request error: $e');
   }
-}
 
-void _connectWebSocket() {
-  final url = 'ws://98.66.234.35:5004/ws/${widget.senderUsername}';
-  _channel = WebSocketChannel.connect(Uri.parse(url));
+  void _connectWebSocket() {
+    final url = 'ws://98.66.234.35:5004/ws/${widget.senderUsername}';
+    _channel = WebSocketChannel.connect(Uri.parse(url));
 
-  _channel.stream.listen((message) {
-    final msg = jsonDecode(message);
-    
-    print("Gelen mesaj: $msg");
+    _channel.stream.listen((message) {
+      final msg = jsonDecode(message);
 
-    setState(() {
-      messages.add({
-        'message_id': msg['message_id'],
-        'text': msg['message'],
-        'isSent': msg['sender'] == widget.senderUsername,
-        'timestamp': msg['timestamp'] != null
-            ? DateTime.fromMillisecondsSinceEpoch(msg['timestamp'] * 1000)
-            : DateTime.now(),  // Eğer timestamp null ise şimdiki zamanı kullan
+      print("Gelen mesaj: $msg");
+
+      setState(() {
+        messages.add({
+          'message_id': msg['message_id'],
+          'text': msg['message'],
+          'isSent': msg['sender'] == widget.senderUsername,
+          'timestamp': msg['timestamp'] != null
+              ? DateTime.fromMillisecondsSinceEpoch(msg['timestamp'] * 1000)
+              : DateTime.now(), // Eğer timestamp null ise şimdiki zamanı kullan
+        });
       });
+    }, onError: (error) {
+      print('WebSocket Hatası: $error');
     });
-  }, onError: (error) {
-    print('WebSocket Hatası: $error');
-  });
-}
-
-
+  }
 
   @override
   void dispose() {
@@ -148,7 +148,8 @@ void _connectWebSocket() {
               ),
             ),
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
               child: Row(
                 children: [
                   Expanded(

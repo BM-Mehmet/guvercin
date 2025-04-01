@@ -15,8 +15,6 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomePage> {
-  // final bool _isSearching = false;
-  // final TextEditingController _searchController = TextEditingController();
   String? _username;
   final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
 
@@ -52,6 +50,7 @@ class _HomeScreenState extends State<HomePage> {
 
     var response = await http.get(
       Uri.parse('http://98.66.234.35:5002/chats/$_username'),
+      // Uri.parse('http://192.168.77.46:5002/chats/$_username'),
       headers: {'Authorization': 'Bearer $token'},
     );
 
