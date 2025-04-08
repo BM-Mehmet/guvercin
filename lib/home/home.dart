@@ -1,11 +1,12 @@
+import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:guvercin/chat_page/chat.dart';
 import 'package:guvercin/search/search.dart';
 import 'package:guvercin/settings/settings_page.dart';
+import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:http/http.dart' as http;
-import 'dart:convert';
-import 'dart:async';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -17,57 +18,88 @@ class HomePage extends StatefulWidget {
 class _HomeScreenState extends State<HomePage> {
   String? _username;
   final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
+  late WebSocketChannel _channel;
+  List<String> _chatUsers = [];
+  StreamSubscription? _wsSubscription;
 
   @override
   void initState() {
     super.initState();
-    _getUsernameFromToken();
+    _getUsernameAndInitWebSocket();
   }
 
-  // JWT token'dan username'i al
-  Future<void> _getUsernameFromToken() async {
+  @override
+  void dispose() {
+    _wsSubscription?.cancel();
+    _channel.sink.close();
+    super.dispose();
+  }
+
+  Future<void> _getUsernameAndInitWebSocket() async {
     String? token = await _secureStorage.read(key: 'auth_token');
     if (token != null) {
-      // Token'dan username'i çözümleyelim (payload kısmı)
       var decodedToken = _decodeJWT(token);
-      setState(() {
-        _username = decodedToken['username'];
-      });
+      _username = decodedToken['username'];
+
+      if (_username != null) {
+        await _fetchChats(); // Başlangıçta sohbettekileri çek
+        _initWebSocket();     // WebSocket bağlantısı kur
+        setState(() {});
+      }
     }
   }
 
-  // JWT çözümleme işlemi
   Map<String, dynamic> _decodeJWT(String token) {
     final parts = token.split('.');
     final payload = base64Url.decode(base64Url.normalize(parts[1]));
     return json.decode(utf8.decode(payload));
   }
 
-  // Sunucudan sohbetleri al
-  Future<List<Map<String, dynamic>>> _fetchChats() async {
+  Future<void> _fetchChats() async {
     String? token = await _secureStorage.read(key: 'auth_token');
-    if (token == null || _username == null) return [];
+    if (token == null || _username == null) return;
 
-    var response = await http.get(
+    final response = await http.get(
       Uri.parse('http://98.66.234.35:5002/chats/$_username'),
-      // Uri.parse('http://192.168.77.46:5002/chats/$_username'),
       headers: {'Authorization': 'Bearer $token'},
     );
 
     if (response.statusCode == 200) {
-      var jsonData = json.decode(response.body);
-
+      final jsonData = json.decode(response.body);
       if (jsonData is Map<String, dynamic> && jsonData.containsKey('users')) {
-        List<dynamic> users = jsonData['users'];
-        return users
-            .map((username) => {'receiver': username}) // Listeye dönüştür
-            .toList();
-      } else {
-        throw Exception('Geçersiz API formatı');
+        final users = List<String>.from(jsonData['users']);
+        setState(() {
+          _chatUsers = users;
+        });
       }
-    } else {
-      throw Exception('Sohbetler alınamadı');
     }
+  }
+
+  void _initWebSocket() {
+    _channel = WebSocketChannel.connect(
+      Uri.parse('ws://98.66.234.35:5002/ws/$_username'),
+    );
+
+    _wsSubscription = _channel.stream.listen(
+      (data) {
+        final decoded = json.decode(data);
+        if (decoded['type'] == 'new_message') {
+          final sender = decoded['from'];
+          if (!_chatUsers.contains(sender)) {
+            setState(() {
+              _chatUsers.insert(0, sender); // Yeni gelen kullanıcı en üste
+            });
+          }
+        }
+      },
+      onError: (error) {
+        debugPrint('WebSocket error: $error');
+      },
+      onDone: () {
+        debugPrint('WebSocket closed');
+        // Otomatik yeniden bağlanma istersen buraya eklenebilir
+      },
+    );
   }
 
   @override
@@ -81,9 +113,6 @@ class _HomeScreenState extends State<HomePage> {
           if (_username != null) ...[
             GestureDetector(
               onTap: () {
-                // Kullanıcı adına tıklanınca yönlendirme yapılır
-                print("Kullanıcı adı tıklandı: $_username");
-                // Chat sayfasına yönlendirme
                 Navigator.push(
                   context,
                   MaterialPageRoute(
@@ -104,53 +133,41 @@ class _HomeScreenState extends State<HomePage> {
               ),
             ),
             Expanded(
-              child: FutureBuilder<List<Map<String, dynamic>>>(
-                future: _fetchChats(),
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(child: CircularProgressIndicator());
-                  } else if (snapshot.hasError) {
-                    return Center(child: Text('Hata: ${snapshot.error}'));
-                  } else if (snapshot.data == null || snapshot.data!.isEmpty) {
-                    return const Center(child: Text('Henüz sohbet yok.'));
-                  } else {
-                    return ListView.builder(
-                      itemCount: snapshot.data!.length,
+              child: _chatUsers.isEmpty
+                  ? const Center(child: Text('Henüz sohbet yok.'))
+                  : ListView.builder(
+                      itemCount: _chatUsers.length,
                       itemBuilder: (context, index) {
-                        var chat = snapshot.data![index];
+                        final receiver = _chatUsers[index];
                         return ListTile(
                           leading: CircleAvatar(
                             radius: 25,
                             backgroundColor: Colors.blueAccent,
                             child: Text(
-                              chat['receiver'][0].toUpperCase(),
+                              receiver[0].toUpperCase(),
                               style: const TextStyle(color: Colors.white),
                             ),
                           ),
-                          title: Text(chat['receiver']),
+                          title: Text(receiver),
                           onTap: () {
-                            // Sohbet sayfasına yönlendirme
                             Navigator.push(
                               context,
                               MaterialPageRoute(
                                 builder: (context) => ChatPage(
                                   senderUsername: _username!,
-                                  receiverUsername: chat['receiver'],
+                                  receiverUsername: receiver,
                                 ),
                               ),
                             );
                           },
                         );
                       },
-                    );
-                  }
-                },
-              ),
+                    ),
             ),
-          ],
+          ]
         ],
       ),
-       bottomNavigationBar: BottomAppBar(
+      bottomNavigationBar: BottomAppBar(
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceAround,
           children: [
@@ -163,7 +180,6 @@ class _HomeScreenState extends State<HomePage> {
                 );
               },
             ),
-            // Yeni mesaj başlatma butonu
             IconButton(
               icon: const Icon(Icons.message, size: 30),
               onPressed: () {

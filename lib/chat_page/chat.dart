@@ -1,7 +1,7 @@
+import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
-import 'package:http/http.dart' as http;
 
 class ChatPage extends StatefulWidget {
   final String senderUsername;
