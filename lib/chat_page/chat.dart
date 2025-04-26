@@ -16,6 +16,7 @@ class ChatPage extends StatefulWidget {
   @override
   State<ChatPage> createState() => _ChatPageState();
 }
+
 class _ChatPageState extends State<ChatPage> {
   final TextEditingController _controller = TextEditingController();
   final List<Map<String, dynamic>> messages = [];
@@ -28,26 +29,29 @@ class _ChatPageState extends State<ChatPage> {
     _fetchMessages();
   }
 
+  // Mesajları backend API'den çekme
   Future<void> _fetchMessages() async {
-    final chatKey =
-        '${widget.senderUsername}/${widget.receiverUsername}'; // Chat key formatı
-    final uri = Uri.parse('http://98.66.234.35:5004/get_messages/$chatKey');
+    final uri = Uri.parse(
+      'http://172.30.226.235:5004/get_messages/${widget.senderUsername}/${widget.receiverUsername}',
+    );
 
     try {
       final response = await http.get(uri);
-
       if (response.statusCode == 200) {
         final List data = jsonDecode(response.body);
-
         setState(() {
           messages.clear();
           messages.addAll(data.map((msg) {
+            final messageType = msg['type']?.toString() ?? 'text';
+            final content = msg['content']?.toString() ?? '';
+            final fileName = msg['file_name']?.toString() ?? '';
+
             return {
-              'message_id': msg['message_id'],
-              'text': msg['message'],
-              'isSent': msg['sender'] == widget.senderUsername,
-              'timestamp':
-                  DateTime.fromMillisecondsSinceEpoch(msg['timestamp'] * 1000),
+              'message_id': msg['id'].toString(),
+              'text': messageType == 'text' ? content : '[Dosya: $fileName]',
+              'isSent': msg['sender']?.toString() == widget.senderUsername,
+              'timestamp': DateTime.fromMillisecondsSinceEpoch(
+                  (msg['timestamp'] as int) * 1000),
             };
           }));
         });
@@ -55,26 +59,27 @@ class _ChatPageState extends State<ChatPage> {
         debugPrint('Mesajlar alınamadı: ${response.statusCode}');
       }
     } catch (e) {
-      debugPrint('Hata oluştu: $e');
+      debugPrint('Mesaj çekilirken hata: $e');
     }
   }
 
+  // WebSocket bağlantısı kurma
   void _connectWebSocket() {
-    final wsUrl = 'ws://98.66.234.35:5004/ws/${widget.senderUsername}';
+    final wsUrl = 'ws://172.30.226.235:5004/ws/${widget.senderUsername}';
+
     _channel = WebSocketChannel.connect(Uri.parse(wsUrl));
 
     _channel.stream.listen((event) {
       final data = jsonDecode(event);
-      if (data['sender'] == widget.receiverUsername ||
-          data['sender'] == widget.senderUsername) {
+      if (data['sender'] == widget.receiverUsername) {
         setState(() {
           messages.add({
-            'message_id': data['message_id'],
-            'text': data['message'],
-            'isSent': data['sender'] == widget.senderUsername,
-            'timestamp': DateTime.fromMillisecondsSinceEpoch(
-              data['timestamp'] * 1000,
-            ),
+            'message_id': data['id'].toString(),
+            'text': data['type'] == 'text'
+                ? data['content']
+                : '[Dosya: ${data['file_name']}]',
+            'isSent': false,
+            'timestamp': DateTime.parse(data['timestamp']),
           });
         });
       }
@@ -83,9 +88,12 @@ class _ChatPageState extends State<ChatPage> {
     });
   }
 
+  // Mesaj silme işlemi
   Future<void> _deleteMessage(String messageId, int index) async {
-    final uri = Uri.parse('http://98.66.234.35:5004/delete_message/${widget.senderUsername}/${widget.receiverUsername}/$messageId');
+    final uri = Uri.parse(
+        'http://172.30.226.235:5004/delete_message/${widget.senderUsername}/${messageId}');
     final response = await http.delete(uri);
+
     if (response.statusCode == 200) {
       setState(() {
         messages.removeAt(index);
@@ -97,6 +105,7 @@ class _ChatPageState extends State<ChatPage> {
     }
   }
 
+  // Mesaj gönderme işlemi
   void _sendMessage() {
     final text = _controller.text.trim();
     if (text.isEmpty) return;
@@ -120,29 +129,27 @@ class _ChatPageState extends State<ChatPage> {
     _controller.clear();
   }
 
-  @override
-  void dispose() {
-    _channel.sink.close();
-    super.dispose();
-  }
-
+  // Silme onayı için dialog gösterme
   void _showDeleteDialog(String messageId, int index) {
     showDialog(
       context: context,
-      barrierDismissible: true, // dışarı tıklayınca da kapanabilir
+      barrierDismissible: true,
       builder: (_) => AlertDialog(
         title: const Text("Mesajı Sil"),
         content: const Text("Bu mesajı silmek istediğinize emin misiniz?"),
         actions: [
           TextButton(
             onPressed: () {
-              Navigator.of(context, rootNavigator: true).pop(); // BU önemli
+              // AlertDialog'u kapat
+              Navigator.of(context, rootNavigator: true)
+                  .pop(); // rootNavigator: true parametresi, dialogu doğru şekilde kapatır
             },
             child: const Text("İptal"),
           ),
           TextButton(
             onPressed: () async {
-              Navigator.of(context, rootNavigator: true).pop();
+             Navigator.of(context, rootNavigator: true)
+                  .pop(); // 
               await _deleteMessage(messageId, index);
             },
             child: const Text("Sil"),
@@ -153,21 +160,17 @@ class _ChatPageState extends State<ChatPage> {
   }
 
   @override
+  void dispose() {
+    _channel.sink.close();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Güvercin'),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: Center(
-              child: Text(
-                widget.receiverUsername,
-                style: const TextStyle(fontWeight: FontWeight.bold),
-              ),
-            ),
-          ),
-        ],
+        title: Text(widget.receiverUsername),
       ),
       body: Column(
         children: [
@@ -181,7 +184,7 @@ class _ChatPageState extends State<ChatPage> {
                   isSent: msg['isSent'],
                   timestamp: msg['timestamp'],
                   onLongPress: () =>
-                      _showDeleteDialog(msg['message_id'] ?? '', index),
+                      _showDeleteDialog(msg['message_id'], index),
                 );
               },
             ),

@@ -36,6 +36,7 @@ class _HomeScreenState extends State<HomePage> {
   }
 
   Future<void> _getUsernameAndInitWebSocket() async {
+    // Auth token'ı güvenli depolamadan oku
     String? token = await _secureStorage.read(key: 'auth_token');
     if (token != null) {
       var decodedToken = _decodeJWT(token);
@@ -43,7 +44,7 @@ class _HomeScreenState extends State<HomePage> {
 
       if (_username != null) {
         await _fetchChats(); // Başlangıçta sohbettekileri çek
-        _initWebSocket();     // WebSocket bağlantısı kur
+        _initWebSocket(); // WebSocket bağlantısını başlat
         setState(() {});
       }
     }
@@ -55,12 +56,13 @@ class _HomeScreenState extends State<HomePage> {
     return json.decode(utf8.decode(payload));
   }
 
-  Future<void> _fetchChats() async {
-    String? token = await _secureStorage.read(key: 'auth_token');
-    if (token == null || _username == null) return;
+Future<void> _fetchChats() async {
+  String? token = await _secureStorage.read(key: 'auth_token');
+  if (token == null || _username == null) return;
 
+  try {
     final response = await http.get(
-      Uri.parse('http://98.66.234.35:5002/chats/$_username'),
+      Uri.parse('http://172.30.226.235:5002/chats/$_username'),
       headers: {'Authorization': 'Bearer $token'},
     );
 
@@ -71,13 +73,23 @@ class _HomeScreenState extends State<HomePage> {
         setState(() {
           _chatUsers = users;
         });
+      } else {
+        debugPrint('API response does not contain users: ${response.body}');
       }
+    } else {
+      debugPrint('Failed to load chats: ${response.statusCode}');
+      debugPrint('Response body: ${response.body}');
     }
+  } catch (e) {
+    debugPrint('Error fetching chats: $e');
   }
+}
 
+
+  // WebSocket bağlantısını başlatmak için
   void _initWebSocket() {
     _channel = WebSocketChannel.connect(
-      Uri.parse('ws://98.66.234.35:5002/ws/$_username'),
+      Uri.parse('ws://172.30.226.235:5002/ws/$_username'), // WebSocket bağlantısı
     );
 
     _wsSubscription = _channel.stream.listen(
@@ -87,7 +99,7 @@ class _HomeScreenState extends State<HomePage> {
           final sender = decoded['from'];
           if (!_chatUsers.contains(sender)) {
             setState(() {
-              _chatUsers.insert(0, sender); // Yeni gelen kullanıcı en üste
+              _chatUsers.insert(0, sender); // Yeni gelen kullanıcı en üste ekleniyor
             });
           }
         }
@@ -97,7 +109,6 @@ class _HomeScreenState extends State<HomePage> {
       },
       onDone: () {
         debugPrint('WebSocket closed');
-        // Otomatik yeniden bağlanma istersen buraya eklenebilir
       },
     );
   }
@@ -118,7 +129,7 @@ class _HomeScreenState extends State<HomePage> {
                   MaterialPageRoute(
                     builder: (context) => ChatPage(
                       senderUsername: _username!,
-                      receiverUsername: _username!,
+                      receiverUsername: _username!, // Kendi ile sohbet edilmemeli
                     ),
                   ),
                 );
@@ -155,7 +166,7 @@ class _HomeScreenState extends State<HomePage> {
                               MaterialPageRoute(
                                 builder: (context) => ChatPage(
                                   senderUsername: _username!,
-                                  receiverUsername: receiver,
+                                  receiverUsername: receiver, // Burada receiver kullanılıyor
                                 ),
                               ),
                             );
