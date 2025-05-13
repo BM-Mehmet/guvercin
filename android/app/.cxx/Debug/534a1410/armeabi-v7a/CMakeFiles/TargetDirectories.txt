@@ -1,0 +1,2 @@
+C:/Users/bmmeh/projeler/guvercin/android/app/.cxx/Debug/534a1410/armeabi-v7a/CMakeFiles/edit_cache.dir
+C:/Users/bmmeh/projeler/guvercin/android/app/.cxx/Debug/534a1410/armeabi-v7a/CMakeFiles/rebuild_cache.dir

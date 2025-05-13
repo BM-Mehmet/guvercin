@@ -1,7 +1,14 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:file_picker/file_picker.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
+import 'package:flutter_sound/flutter_sound.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:path/path.dart' as path;
+import 'package:mime/mime.dart';
 
 class ChatPage extends StatefulWidget {
   final String senderUsername;
@@ -18,119 +25,127 @@ class ChatPage extends StatefulWidget {
 }
 
 class _ChatPageState extends State<ChatPage> {
-  final TextEditingController _controller = TextEditingController();
-  final List<Map<String, dynamic>> messages = [];
-  final ScrollController _scrollController = ScrollController();
+  final _controller = TextEditingController();
+  final _scrollController = ScrollController();
+  final List<Map<String, dynamic>> _messages = [];
+
   WebSocketChannel? _channel;
+  FlutterSoundRecorder? _recorder;
+  FlutterSoundPlayer? _player;
+  File? _recordedFile;
+  bool _isRecording = false;
 
   @override
   void initState() {
     super.initState();
     _connectWebSocket();
     _fetchMessages();
+    _initAudio();
   }
 
   @override
   void dispose() {
     _channel?.sink.close();
     _controller.dispose();
+    _scrollController.dispose();
+    _recorder?.closeRecorder();
+    _player?.closePlayer();
     super.dispose();
   }
 
+  Future<void> _initAudio() async {
+    _recorder = FlutterSoundRecorder();
+    _player = FlutterSoundPlayer();
+    await _recorder!.openRecorder();
+    await _player!.openPlayer();
+    var status = await Permission.microphone.request();
+    if (!status.isGranted) {
+      debugPrint('Mikrofon izni reddedildi.');
+    }
+  }
+
   void _connectWebSocket() {
-  // Eğer daha önce bağlantı varsa kapat
-  _channel?.sink.close();
+    final wsUrl = 'ws://172.30.226.235:5004/ws/${widget.senderUsername}';
+    _channel = WebSocketChannel.connect(Uri.parse(wsUrl));
 
-  final wsUrl = 'ws://172.30.226.235:5004/ws/${widget.senderUsername}';
-  _channel = WebSocketChannel.connect(Uri.parse(wsUrl));
-
-  _channel!.stream.listen(
-    (event) {
-      if (!mounted) return;
-
+    _channel!.stream.listen((event) {
       final data = jsonDecode(event);
-
-      DateTime timestamp;
-      try {
-        timestamp = DateTime.parse(data['timestamp'].toString());
-      } catch (e) {
-        timestamp = DateTime.now();
-      }
-
-      // Yeni gelen mesajı ekle
+      final messageId = data['message_id'];
+      DateTime time =
+          DateTime.tryParse(data['timestamp'] ?? '') ?? DateTime.now();
       setState(() {
-         int? deliveryStatus; // Varsayılan durum "sent"
-        // Veritabanındaki teslimat durumu (0 veya 1) ile uyumlu şekilde kontrol
-        if (data['delivered'] == 0) {
-          deliveryStatus = 0 ;
-        } else if (data['delivered'] == 1) {  // Eğer "read" durumu varsa, veritabanında 2 olarak gösterilebilir.
-          deliveryStatus = 1;
-        }
-
-        messages.add({
-          'message_id': data['message_id']?.toString() ?? '',
-          'text': _parseMessageContent(data),
+        _messages.add({
+          'message_id': messageId,
+          'text': _parseContent(data),
           'isSent': false,
-          'timestamp': timestamp,
-          'delivered': deliveryStatus,
+          'timestamp': time,
+          'delivered': data['delivered'],
         });
       });
+      _markAsSeen(messageId);
+      _scrollToBottom();
+    }, onError: (err) {
+      debugPrint('WebSocket Error: $err');
+      _reconnect();
+    }, onDone: () {
+      debugPrint('WebSocket Closed');
+      _reconnect();
+    });
+  }
 
-      // Yeni mesaj eklenince ekranı aşağı kaydır
-      WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
-    },
-    onError: (error) {
-      debugPrint('WebSocket hatası: $error');
-      _reconnectWebSocket();
-    },
-    onDone: () {
-      debugPrint('WebSocket bağlantısı kapandı.');
-      _reconnectWebSocket();
-    },
-    cancelOnError: true,
-  );
-}
-
-
-  void _reconnectWebSocket() {
+  void _reconnect() {
     Future.delayed(const Duration(seconds: 2), () {
-      if (!mounted) return;
-      debugPrint('WebSocket yeniden bağlanıyor...');
-      _connectWebSocket();
+      if (mounted) _connectWebSocket();
     });
   }
 
   Future<void> _fetchMessages() async {
-    final uri = Uri.parse(
-      'http://172.30.226.235:5004/get_messages/${widget.senderUsername}/${widget.receiverUsername}',
-    );
-
+    final url =
+        'http://172.30.226.235:5004/get_messages/${widget.senderUsername}/${widget.receiverUsername}';
     try {
-      final response = await http.get(uri);
-      if (response.statusCode == 200) {
-        final List data = jsonDecode(response.body);
+      final res = await http.get(Uri.parse(url));
+      if (res.statusCode == 200) {
+        final List data = jsonDecode(res.body);
         setState(() {
-          messages.clear();
-          messages.addAll(data.map((msg) {
-            final messageType = msg['type']?.toString() ?? 'text';
-            final content = msg['content']?.toString() ?? '';
-            final fileName = msg['file_name']?.toString() ?? '';
-
+          _messages.clear();
+          _messages.addAll(data.map((msg) {
             return {
-              'message_id': msg['id'].toString(),
-              'text': messageType == 'text' ? content : '[Dosya: $fileName]',
-              'isSent': msg['sender']?.toString() == widget.senderUsername,
-              'timestamp': DateTime.fromMillisecondsSinceEpoch(
-                  (msg['timestamp'] as int) * 1000),
-              'delivered': msg['delivered'] == 1,
+              'message_id': msg['id'],
+              'text': msg['type'] == 'text'
+                  ? msg['content']
+                  : '[Dosya: ${msg['file_name']}]',
+              'isSent': msg['sender'] == widget.senderUsername,
+              'timestamp':
+                  DateTime.fromMillisecondsSinceEpoch(msg['timestamp'] * 1000),
+              'delivered': msg['delivered'] == 0 ? 1 : 0,
             };
           }));
         });
-      } else {
-        debugPrint('Mesajlar alınamadı: ${response.statusCode}');
+        _scrollToBottom();
       }
     } catch (e) {
-      debugPrint('Mesaj çekilirken hata: $e');
+      debugPrint('Mesaj çekme hatası: $e');
+    }
+  }
+
+  Future<void> _markAsSeen(String messageId) async {
+    final url = 'http://172.30.226.235:5004/ws/${widget.senderUsername}/seen';
+    try {
+      final res = await http.post(
+        Uri.parse(url),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'message_id': messageId,
+          'receiver': widget.receiverUsername,
+        }),
+      );
+      if (res.statusCode == 200) {
+        debugPrint('Mesaj okundu olarak işaretlendi.');
+      } else {
+        debugPrint('mark_seen başarısız: ${res.body}');
+      }
+    } catch (e) {
+      debugPrint('mark_seen hatası: $e');
     }
   }
 
@@ -138,136 +153,226 @@ class _ChatPageState extends State<ChatPage> {
     final text = _controller.text.trim();
     if (text.isEmpty) return;
 
-    final message = {
+    final msg = {
       'sender': widget.senderUsername,
       'receiver': widget.receiverUsername,
       'message': text,
     };
-
-    _channel?.sink.add(jsonEncode(message));
-
+    _channel?.sink.add(jsonEncode(msg));
     setState(() {
-      messages.add({
+      _messages.add({
+        'message_id': '',
         'text': text,
         'isSent': true,
         'timestamp': DateTime.now(),
         'delivered': 0,
       });
     });
-
     _controller.clear();
-    FocusScope.of(context).unfocus();
     _scrollToBottom();
   }
 
-  Future<void> _deleteMessage(String messageId, int index) async {
-    final uri = Uri.parse(
-        'http://172.30.226.235:5004/delete_message/${widget.senderUsername}/$messageId');
+  Future<void> _sendFile(File file) async {
+    final ws = WebSocketChannel.connect(
+      Uri.parse('ws://172.30.226.235:5004/ws/${widget.senderUsername}'),
+    );
 
-    try {
-      final response = await http.delete(uri);
-      if (response.statusCode == 200) {
-        setState(() {
-          messages.removeAt(index);
-        });
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Mesaj silinemedi.')),
-        );
-      }
-    } catch (e) {
-      debugPrint('Mesaj silme hatası: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Sunucu hatası, mesaj silinemedi.')),
-      );
+    final fileName = path.basename(file.path);
+    final mimeType = lookupMimeType(file.path) ?? 'application/octet-stream';
+
+    // Dosya bilgilerini içeren JSON
+    final fileMetadata = jsonEncode({
+      'sender': widget.senderUsername,
+      'receiver': widget.receiverUsername,
+      'type': 'file',
+      'file_name': fileName,
+      'mime_type': mimeType,
+      'message': null,
+      'file_url': 'incoming', // dosyanın geleceğini belirtmek için
+    });
+
+    ws.sink.add(fileMetadata);
+
+    // Dosyanın ham içeriğini byte olarak gönder
+    final fileBytes = await file.readAsBytes();
+    ws.sink.add(fileBytes);
+
+    ws.sink.close(); // Bağlantıyı kapatabilirsiniz veya açık tutabilirsiniz
+  }
+
+  Future<void> _pickFile() async {
+    final picked = await FilePicker.platform.pickFiles();
+    if (picked != null && picked.files.single.path != null) {
+      await _sendFile(File(picked.files.single.path!));
     }
   }
 
-  void _showDeleteDialog(String messageId, int index) {
+  Future<void> _startStopRecording() async {
+    if (_isRecording) {
+      final path = await _recorder!.stopRecorder();
+      _recordedFile = File(path!);
+      setState(() => _isRecording = false);
+      _showAudioDialog();
+    } else {
+      final dir = await getApplicationDocumentsDirectory();
+      await _recorder!.startRecorder(toFile: '${dir.path}/audio.m4a');
+      setState(() => _isRecording = true);
+    }
+  }
+
+  void _showAudioDialog() {
     showDialog(
       context: context,
-      barrierDismissible: true,
       builder: (_) => AlertDialog(
-        title: const Text("Mesajı Sil"),
-        content: const Text("Bu mesajı silmek istediğinize emin misiniz?"),
+        title: const Text('Ses Kaydı'),
+        content: const Text('Ses kaydı gönderilsin mi?'),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(context, rootNavigator: true).pop(),
-            child: const Text("İptal"),
+            child: const Text('Dinle'),
+            onPressed: () => _player?.startPlayer(fromURI: _recordedFile!.path),
           ),
           TextButton(
-            onPressed: () async {
-              Navigator.of(context, rootNavigator: true).pop();
-              await _deleteMessage(messageId, index);
+            child: const Text('Gönder'),
+            onPressed: () {
+              Navigator.pop(context);
+              _sendFile(_recordedFile!);
             },
-            child: const Text("Sil"),
+          ),
+          TextButton(
+            child: const Text('İptal'),
+            onPressed: () => Navigator.pop(context),
           ),
         ],
       ),
     );
   }
 
-  void _scrollToBottom() {
-    if (_scrollController.hasClients) {
-      _scrollController.animateTo(
-        _scrollController.position.maxScrollExtent,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOut,
-      );
+  Future<void> _deleteMessage(String messageId, int index) async {
+    final uri = Uri.parse(
+        'http://172.30.226.235:5004/delete_message/${widget.senderUsername}/$messageId');
+    final res = await http.delete(uri);
+    if (res.statusCode == 200) {
+      setState(() => _messages.removeAt(index));
     }
   }
 
-  String _parseMessageContent(Map<String, dynamic> data) {
-    final fileName = data['file_name'];
-    if (fileName != null) {
-      final lower = fileName.toString().toLowerCase();
-      if (lower.endsWith('.m4a') ||
-          lower.endsWith('.mp3') ||
-          lower.endsWith('.wav') ||
-          lower.endsWith('.ogg')) {
-        return '[Ses Kaydı]';
-      } else if (lower.endsWith('.jpg') ||
-          lower.endsWith('.jpeg') ||
-          lower.endsWith('.png') ||
-          lower.endsWith('.gif') ||
-          lower.endsWith('.bmp') ||
-          lower.endsWith('.webp')) {
-        return '[Fotoğraf]';
-      } else {
-        return '[Dosya: $fileName]';
-      }
+  String _parseContent(Map<String, dynamic> data) {
+    final file = data['file_name']?.toString().toLowerCase();
+    if (file != null) {
+      if (file.endsWith('.mp3') || file.endsWith('.wav')) return '[Ses Kaydı]';
+      if (file.endsWith('.jpg') || file.endsWith('.png')) return '[Fotoğraf]';
+      return '[Dosya: ${data['file_name']}]';
     }
     return data['message'] ?? '';
   }
+
+  void _scrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
+      }
+    });
+  }
+
+  Widget _buildInputArea() {
+    return Padding(
+      padding: const EdgeInsets.all(8),
+      child: Row(
+        children: [
+          IconButton(icon: const Icon(Icons.attach_file), onPressed: _pickFile),
+          IconButton(
+              icon: Icon(_isRecording ? Icons.stop : Icons.mic),
+              onPressed: _startStopRecording),
+          Expanded(
+            child: TextField(
+              controller: _controller,
+              decoration: const InputDecoration(hintText: 'Mesaj yaz...'),
+            ),
+          ),
+          IconButton(icon: const Icon(Icons.send), onPressed: _sendMessage),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMessageBubble(Map<String, dynamic> msg) {
+    final isSent = msg['isSent'] as bool;
+    final alignment = isSent ? Alignment.centerRight : Alignment.centerLeft;
+    final bubbleColor = isSent ? Colors.blue[100] : Colors.grey[300];
+    const textColor = Colors.black;
+    final timestamp = msg['timestamp'] as DateTime;
+    final deliveredcheck = msg['delivered'];
+    int delivered = 0;
+    if (deliveredcheck == null) {
+
+    } else {
+        delivered = deliveredcheck as int;
+    }
+
+    Icon? statusIcon;
+    if (isSent) {
+      if (delivered == 1) {
+        statusIcon = const Icon(Icons.done_all, size: 16, color: Colors.blue);
+      } else {
+        statusIcon = const Icon(Icons.done, size: 16, color: Colors.grey);
+      }
+    }
+
+    return Align(
+      alignment: alignment,
+      child: Container(
+        margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: bubbleColor,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Column(
+          crossAxisAlignment:
+              isSent ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+          children: [
+                        Text(
+              msg['text'],
+              style: const TextStyle(color: textColor),
+            ),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  '${timestamp.hour.toString().padLeft(2, '0')}:${timestamp.minute.toString().padLeft(2, '0')}',
+                  style: const TextStyle(fontSize: 10, color: Colors.black54),
+                ),
+                if (statusIcon != null) ...[
+                  const SizedBox(width: 4),
+                  statusIcon,
+                ],
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.receiverUsername),
+        title: Text('${widget.senderUsername} - ${widget.receiverUsername}'),
       ),
       body: Column(
         children: [
           Expanded(
             child: ListView.builder(
               controller: _scrollController,
-              itemCount: messages.length,
-              itemBuilder: (_, index) {
-                final msg = messages[index];
-                return MessageBubble(
-                  text: msg['text'],
-                  isSent: msg['isSent'],
-                  timestamp: msg['timestamp'],
-                  deliveryStatus: msg['delivered'] == 1
-                      ? 1 : 0 , // Üç durum için doğru değeri döndürüyoruz
-
-                  onLongPress: () {
-                    if (msg['isSent'] &&
-                        msg['message_id'] != null &&
-                        msg['message_id'] != '') {
-                      _showDeleteDialog(msg['message_id'], index);
-                    }
-                  },
+              itemCount: _messages.length,
+              itemBuilder: (ctx, index) {
+                final msg = _messages[index];
+                return Dismissible(
+                  key: Key(msg['message_id'].toString()),
+                  onDismissed: (_) => _deleteMessage(msg['message_id'], index),
+                  child: _buildMessageBubble(msg),
                 );
               },
             ),
@@ -276,122 +381,5 @@ class _ChatPageState extends State<ChatPage> {
         ],
       ),
     );
-  }
-
-  Widget _buildInputArea() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      child: Row(
-        children: [
-          Expanded(
-            child: TextField(
-              controller: _controller,
-              decoration: InputDecoration(
-                hintText: 'Mesaj yaz...',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(20),
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(width: 8),
-          IconButton(
-            onPressed: _sendMessage,
-            icon: const Icon(Icons.send),
-            color: Theme.of(context).primaryColor,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class MessageBubble extends StatelessWidget {
-  final String text;
-  final bool isSent;
-  final DateTime timestamp;
-  final int deliveryStatus; // "sent", "delivered", "read"
-  final VoidCallback onLongPress;
-
-  const MessageBubble({
-    super.key,
-    required this.text,
-    required this.isSent,
-    required this.timestamp,
-    required this.deliveryStatus,
-    required this.onLongPress,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onLongPress: onLongPress,
-      child: Align(
-        alignment: isSent ? Alignment.centerRight : Alignment.centerLeft,
-        child: Container(
-          margin: const EdgeInsets.symmetric(vertical: 5, horizontal: 10),
-          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
-          decoration: BoxDecoration(
-            color: isSent ? Colors.blueAccent : Colors.grey[300],
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: Column(
-            crossAxisAlignment:
-                isSent ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-            children: [
-              Text(
-                text,
-                style: TextStyle(
-                  color: isSent ? Colors.white : Colors.black,
-                  fontSize: 16,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    "${timestamp.hour.toString().padLeft(2, '0')}:${timestamp.minute.toString().padLeft(2, '0')}",
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: isSent ? Colors.white : Colors.black54,
-                    ),
-                  ),
-                  const SizedBox(width: 5),
-                  if (isSent)
-                    Icon(
-                      _getDeliveryIcon(deliveryStatus),
-                      size: 16,
-                      color: _getDeliveryColor(deliveryStatus),
-                    ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  IconData _getDeliveryIcon(int status) {
-    switch (status) {
-      case 0:
-        return Icons.done_all; // Gönderildi ve okundu
-      case 1:
-        return Icons.remove_red_eye; // Okundu
-      default:
-        return Icons.done; // Henüz gönderilmedi, sadece gönderildi
-    }
-  }
-
-  Color _getDeliveryColor(int status) {
-    switch (status) {
-      case 0:
-        return Colors.green; // Okundu veya teslim edildi
-      case 1:
-        return Colors.blue; // Okundu
-      default:
-        return Colors.white; // Henüz gönderilmedi
-    }
   }
 }

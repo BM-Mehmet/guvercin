@@ -12,4 +12,4 @@ void main() async {
   await FirebaseApi().initNotifications();
   runApp(
 const LoadPage()); 
-}
+} 
