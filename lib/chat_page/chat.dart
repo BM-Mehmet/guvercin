@@ -7,7 +7,7 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as path;
 import 'package:mime/mime.dart';
-import 'package:open_file/open_file.dart'; // Dosyayı açmak için
+import 'package:open_file/open_file.dart';
 
 class ChatPage extends StatefulWidget {
   final String senderUsername;
@@ -29,6 +29,9 @@ class _ChatPageState extends State<ChatPage> {
   final List<Map<String, dynamic>> _messages = [];
 
   WebSocketChannel? _channel;
+  File? _pickedFile;
+  String? _pickedFileName;
+
   @override
   void initState() {
     super.initState();
@@ -41,10 +44,8 @@ class _ChatPageState extends State<ChatPage> {
     _channel?.sink.close();
     _controller.dispose();
     _scrollController.dispose();
-
     super.dispose();
   }
-
 
   void _connectWebSocket() {
     final wsUrl = 'ws://172.30.226.235:5004/ws/${widget.senderUsername}';
@@ -175,23 +176,20 @@ class _ChatPageState extends State<ChatPage> {
     });
 
     ws.sink.add(fileMetadata);
-
     final fileBytes = await file.readAsBytes();
     ws.sink.add(fileBytes);
-
     ws.sink.close();
   }
 
   Future<void> _pickFile() async {
     final picked = await FilePicker.platform.pickFiles();
     if (picked != null && picked.files.single.path != null) {
-      await _sendFile(File(picked.files.single.path!));
+      setState(() {
+        _pickedFile = File(picked.files.single.path!);
+        _pickedFileName = picked.files.single.name;
+      });
     }
   }
-
-
-
-  
 
   Future<void> _downloadAndOpenFile(String username, String fileName) async {
     try {
@@ -241,16 +239,63 @@ class _ChatPageState extends State<ChatPage> {
   Widget _buildInputArea() {
     return Padding(
       padding: const EdgeInsets.all(8),
-      child: Row(
+      child: Column(
         children: [
-          IconButton(icon: const Icon(Icons.attach_file), onPressed: _pickFile),
-          Expanded(
-            child: TextField(
-              controller: _controller,
-              decoration: const InputDecoration(hintText: 'Mesaj yaz...'),
+          if (_pickedFile != null && _pickedFileName != null)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              margin: const EdgeInsets.only(bottom: 4),
+              decoration: BoxDecoration(
+                color: Colors.grey[200],
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.insert_drive_file, size: 20),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      _pickedFileName!,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close, size: 16),
+                    onPressed: () {
+                      setState(() {
+                        _pickedFile = null;
+                        _pickedFileName = null;
+                      });
+                    },
+                  ),
+                ],
+              ),
             ),
+          Row(
+            children: [
+              IconButton(icon: const Icon(Icons.attach_file), onPressed: _pickFile),
+              Expanded(
+                child: TextField(
+                  controller: _controller,
+                  decoration: const InputDecoration(hintText: 'Mesaj yaz...'),
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.send),
+                onPressed: () {
+                  if (_pickedFile != null) {
+                    _sendFile(_pickedFile!);
+                    setState(() {
+                      _pickedFile = null;
+                      _pickedFileName = null;
+                    });
+                  } else {
+                    _sendMessage();
+                  }
+                },
+              ),
+            ],
           ),
-          IconButton(icon: const Icon(Icons.send), onPressed: _sendMessage),
         ],
       ),
     );
@@ -276,7 +321,9 @@ class _ChatPageState extends State<ChatPage> {
     return Align(
       alignment: alignment,
       child: GestureDetector(
-        onTap: isFile ? () => _downloadAndOpenFile(widget.senderUsername,msg['file_name']) : null,
+        onTap: isFile
+            ? () => _downloadAndOpenFile(widget.senderUsername, msg['file_name'])
+            : null,
         child: Container(
           margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
           padding: const EdgeInsets.all(8),
@@ -325,7 +372,8 @@ class _ChatPageState extends State<ChatPage> {
                 final msg = _messages[index];
                 return Dismissible(
                   key: Key(msg['message_id'].toString()),
-                  onDismissed: (_) => _deleteMessage(msg['message_id'], index),
+                  onDismissed: (_) =>
+                      _deleteMessage(msg['message_id'], index),
                   child: _buildMessageBubble(msg),
                 );
               },
