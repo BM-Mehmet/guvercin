@@ -43,7 +43,6 @@ class _CheckTokenScreenState extends State<CheckTokenScreen> {
       // Token geçerli mi kontrol et
       final response = await http.post(
         Uri.parse('http://172.30.226.235:5001/check-session'),
-        //  Uri.parse('http://192.168.77.46:5001/check-session'),
         headers: {'Content-Type': 'application/json'},
         body: json.encode({'token': token}),
       );
