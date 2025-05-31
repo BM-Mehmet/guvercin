@@ -134,7 +134,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     }
     // Sunucuya HTTP POST isteği gönderme
     final response = await http.post(
-      Uri.parse('$Url:5000/register'),
+      Uri.parse('http://$Url:5000/register'),
       headers: {'Content-Type': 'application/json'},
       body: json.encode({
         'username': username,

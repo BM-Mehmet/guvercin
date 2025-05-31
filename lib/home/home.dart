@@ -63,7 +63,7 @@ Future<void> _fetchChats() async {
 
   try {
     final response = await http.get(
-      Uri.parse('$Url:5002/chats/$_username'),
+      Uri.parse('http://$Url:5002/chats/$_username'),
       headers: {'Authorization': 'Bearer $token'},
     );
 

@@ -1,1 +1,1 @@
-const String Url = "http://172.30.226.235";
+const String Url = "34.40.27.112";

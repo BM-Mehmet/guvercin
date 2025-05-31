@@ -52,7 +52,7 @@ class _ChatPageState extends State<ChatPage> {
   }
 
   void _connectWebSocket() {
-    final wsUrl = 'ws://172.30.226.235:5004/ws/${widget.senderUsername}';
+    final wsUrl = 'ws://$Url:5004/ws/${widget.senderUsername}';
     _channel = WebSocketChannel.connect(Uri.parse(wsUrl));
 
     _channel!.stream.listen((event) {
@@ -91,7 +91,7 @@ class _ChatPageState extends State<ChatPage> {
 
   Future<void> _fetchMessages() async {
     final url =
-        '$Url:5004/get_messages/${widget.senderUsername}/${widget.receiverUsername}';
+        'http://$Url:5004/get_messages/${widget.senderUsername}/${widget.receiverUsername}';
     try {
       final res = await http.get(Uri.parse(url));
       if (res.statusCode == 200) {
@@ -118,7 +118,7 @@ class _ChatPageState extends State<ChatPage> {
   }
 
   Future<void> _markAsSeen(String messageId) async {
-    final url = '$Url:5004/ws/${widget.senderUsername}/seen';
+    final url = 'http://$Url:5004/ws/${widget.senderUsername}/seen';
     try {
       final res = await http.post(
         Uri.parse(url),
@@ -205,7 +205,7 @@ class _ChatPageState extends State<ChatPage> {
   Future<void> _downloadAndOpenFile(String username, String fileName) async {
     try {
       final url =
-          '$Url:5004/download_file/$username/$fileName';
+          'http://$Url:5004/download_file/$username/$fileName';
       final response = await http.get(Uri.parse(url));
       if (response.statusCode == 200) {
         final dir = await getTemporaryDirectory();
@@ -246,7 +246,7 @@ class _ChatPageState extends State<ChatPage> {
 
   Future<void> _deleteMessage(String messageId, int index) async {
     final uri = Uri.parse(
-        '$Url:5004/delete_message/${widget.senderUsername}/$messageId');
+        'http://$Url:5004/delete_message/${widget.senderUsername}/$messageId');
     final res = await http.delete(uri);
     if (res.statusCode == 200) {
       _messages.removeAt(index);

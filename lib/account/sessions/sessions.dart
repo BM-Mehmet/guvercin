@@ -16,7 +16,7 @@ class _OpenSessionsPageState extends State<Sessions> {
 
   // Aktif oturumları sunucudan çek
   Future<void> _fetchSessions() async {
-    final response = await http.get(Uri.parse('$Url:5003/active-sessions'));
+    final response = await http.get(Uri.parse('http://$Url:5003/active-sessions'));
     // final response = await http.get(Uri.parse('http://192.168.77.46:5003/active-sessions'));
 
     if (response.statusCode == 200) {

@@ -75,7 +75,7 @@ class _DeleteAccountState extends State<DeleteAccount> {
       try {
         final response = await http.delete(
           Uri.parse(
-              '$Url:5005/delete_user/$username'), // Kullanıcı adını dinamik olarak kullan
+              'http://$Url:5005/delete_user/$username'), // Kullanıcı adını dinamik olarak kullan
         );
 
         if (response.statusCode == 200) {
