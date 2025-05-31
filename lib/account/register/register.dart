@@ -7,6 +7,7 @@ import 'package:guvercin/diffie_hellman/diffie_hellman.dart';
 import 'package:guvercin/account/login/login.dart';
 import 'package:http/http.dart' as http;
 import 'package:pointycastle/digests/sha256.dart';
+import 'package:guvercin/env.dart';
 
 class RegisterPage extends StatelessWidget {
   const RegisterPage({super.key});
@@ -133,7 +134,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     }
     // Sunucuya HTTP POST isteği gönderme
     final response = await http.post(
-      Uri.parse('http://172.30.226.235:5000/register'),
+      Uri.parse('$Url:5000/register'),
       headers: {'Content-Type': 'application/json'},
       body: json.encode({
         'username': username,

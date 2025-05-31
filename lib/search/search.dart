@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:jwt_decoder/jwt_decoder.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:guvercin/env.dart';
 
 const FlutterSecureStorage _secureStorage = FlutterSecureStorage();
 
@@ -38,8 +39,8 @@ class _UserCheckPageState extends State<UserCheckPage> {
 
   Future<void> checkUser(String username) async {
     final response = await http.get(
-      Uri.parse('http://172.30.226.235:5003/check_user?username=$username'),
-      //  Uri.parse('http://192.168.77.46:5003/check_user?username=$username'),
+      Uri.parse('$Url:5003/check_user?username=$username'),
+
     );
 
     if (response.statusCode == 200) {

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:guvercin/load_page/load.dart';
 import 'package:http/http.dart' as http;
+import 'package:guvercin/env.dart';
 
 class DeleteAccount extends StatefulWidget {
   @override
@@ -74,7 +75,7 @@ class _DeleteAccountState extends State<DeleteAccount> {
       try {
         final response = await http.delete(
           Uri.parse(
-              'http://172.30.226.235:5005/delete_user/$username'), // Kullanıcı adını dinamik olarak kullan
+              '$Url:5005/delete_user/$username'), // Kullanıcı adını dinamik olarak kullan
         );
 
         if (response.statusCode == 200) {

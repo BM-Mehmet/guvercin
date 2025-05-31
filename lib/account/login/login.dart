@@ -5,7 +5,7 @@ import 'package:pointycastle/digests/sha256.dart';
 import 'dart:convert'; // String'i byte dizisine çevirmek için gerekli
 import 'package:http/http.dart' as http;
 import 'package:device_info_plus/device_info_plus.dart'; // Cihaz bilgisi almak için
-
+import 'package:guvercin/env.dart';
 void main() {
   runApp(const LoginPage());
 }
@@ -42,7 +42,7 @@ class _CheckTokenScreenState extends State<CheckTokenScreen> {
     if (token   != null) {
       // Token geçerli mi kontrol et
       final response = await http.post(
-        Uri.parse('http://172.30.226.235:5001/check-session'),
+        Uri.parse('$Url:5001/check-session'),
         headers: {'Content-Type': 'application/json'},
         body: json.encode({'token': token}),
       );
@@ -138,7 +138,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
     // HTTP POST isteği
     final response = await http.post(
-      Uri.parse('http://172.30.226.235:5001/login'), // Sunucu adresinizi buraya yazın
+      Uri.parse('$Url:5001/login'), // Sunucu adresinizi buraya yazın
       // Uri.parse('http://192.168.77:5001/login'), // Sunucu adresinizi buraya yazın
       headers: {'Content-Type': 'application/json'},
       body: json.encode({

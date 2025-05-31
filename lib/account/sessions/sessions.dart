@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'package:guvercin/env.dart';
 
 class Sessions extends StatefulWidget {
   const Sessions({super.key});
@@ -15,7 +16,7 @@ class _OpenSessionsPageState extends State<Sessions> {
 
   // Aktif oturumları sunucudan çek
   Future<void> _fetchSessions() async {
-    final response = await http.get(Uri.parse('http://98.66.234.35:5003/active-sessions'));
+    final response = await http.get(Uri.parse('$Url:5003/active-sessions'));
     // final response = await http.get(Uri.parse('http://192.168.77.46:5003/active-sessions'));
 
     if (response.statusCode == 200) {

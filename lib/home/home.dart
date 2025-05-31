@@ -7,6 +7,7 @@ import 'package:guvercin/search/search.dart';
 import 'package:guvercin/settings/settings_page.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:http/http.dart' as http;
+import 'package:guvercin/env.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -62,7 +63,7 @@ Future<void> _fetchChats() async {
 
   try {
     final response = await http.get(
-      Uri.parse('http://172.30.226.235:5002/chats/$_username'),
+      Uri.parse('$Url:5002/chats/$_username'),
       headers: {'Authorization': 'Bearer $token'},
     );
 

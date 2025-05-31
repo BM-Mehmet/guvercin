@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
@@ -8,6 +9,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as path;
 import 'package:mime/mime.dart';
 import 'package:open_file/open_file.dart';
+import 'package:guvercin/env.dart';
 
 class ChatPage extends StatefulWidget {
   final String senderUsername;
@@ -26,11 +28,12 @@ class ChatPage extends StatefulWidget {
 class _ChatPageState extends State<ChatPage> {
   final _controller = TextEditingController();
   final _scrollController = ScrollController();
-  final List<Map<String, dynamic>> _messages = [];
+  List<Map<String, dynamic>> _messages = [];
 
   WebSocketChannel? _channel;
   File? _pickedFile;
   String? _pickedFileName;
+  final _streamController = StreamController<List<Map<String, dynamic>>>.broadcast();
 
   @override
   void initState() {
@@ -44,6 +47,7 @@ class _ChatPageState extends State<ChatPage> {
     _channel?.sink.close();
     _controller.dispose();
     _scrollController.dispose();
+    _streamController.close();
     super.dispose();
   }
 
@@ -56,16 +60,18 @@ class _ChatPageState extends State<ChatPage> {
       final messageId = data['message_id'];
       DateTime time =
           DateTime.tryParse(data['timestamp'] ?? '') ?? DateTime.now();
-      setState(() {
-        _messages.add({
-          'message_id': messageId,
-          'text': _parseContent(data),
-          'isSent': false,
-          'timestamp': time,
-          'delivered': data['delivered'],
-          'file_name': data['file_name'],
-        });
-      });
+
+      final newMessage = {
+        'message_id': messageId,
+        'text': _parseContent(data),
+        'isSent': data['sender'] == widget.senderUsername,
+        'timestamp': time,
+        'delivered': data['delivered'],
+        'file_name': data['file_name'],
+      };
+
+      _messages.add(newMessage);
+      _streamController.add(List.from(_messages));
       _markAsSeen(messageId);
       _scrollToBottom();
     }, onError: (err) {
@@ -85,27 +91,25 @@ class _ChatPageState extends State<ChatPage> {
 
   Future<void> _fetchMessages() async {
     final url =
-        'http://172.30.226.235:5004/get_messages/${widget.senderUsername}/${widget.receiverUsername}';
+        '$Url:5004/get_messages/${widget.senderUsername}/${widget.receiverUsername}';
     try {
       final res = await http.get(Uri.parse(url));
       if (res.statusCode == 200) {
         final List data = jsonDecode(res.body);
-        setState(() {
-          _messages.clear();
-          _messages.addAll(data.map((msg) {
-            return {
-              'message_id': msg['id'],
-              'text': msg['type'] == 'text'
-                  ? msg['content']
-                  : '[Dosya: ${msg['file_name']}]',
-              'isSent': msg['sender'] == widget.senderUsername,
-              'timestamp':
-                  DateTime.fromMillisecondsSinceEpoch(msg['timestamp'] * 1000),
-              'delivered': msg['delivered'] == 0 ? 1 : 0,
-              'file_name': msg['file_name'],
-            };
-          }));
-        });
+        _messages = data.map((msg) {
+          return {
+            'message_id': msg['id'],
+            'text': msg['type'] == 'text'
+                ? msg['content']
+                : '[Dosya: ${msg['file_name']}]',
+            'isSent': msg['sender'] == widget.senderUsername,
+            'timestamp':
+                DateTime.fromMillisecondsSinceEpoch(msg['timestamp'] * 1000),
+            'delivered': msg['delivered'] == 0 ? 1 : 0,
+            'file_name': msg['file_name'],
+          };
+        }).toList();
+        _streamController.add(List.from(_messages));
         _scrollToBottom();
       }
     } catch (e) {
@@ -114,7 +118,7 @@ class _ChatPageState extends State<ChatPage> {
   }
 
   Future<void> _markAsSeen(String messageId) async {
-    final url = 'http://172.30.226.235:5004/ws/${widget.senderUsername}/seen';
+    final url = '$Url:5004/ws/${widget.senderUsername}/seen';
     try {
       final res = await http.post(
         Uri.parse(url),
@@ -124,9 +128,7 @@ class _ChatPageState extends State<ChatPage> {
           'receiver': widget.receiverUsername,
         }),
       );
-      if (res.statusCode == 200) {
-        debugPrint('Mesaj okundu olarak işaretlendi.');
-      } else {
+      if (res.statusCode != 200) {
         debugPrint('mark_seen başarısız: ${res.body}');
       }
     } catch (e) {
@@ -144,24 +146,22 @@ class _ChatPageState extends State<ChatPage> {
       'message': text,
     };
     _channel?.sink.add(jsonEncode(msg));
-    setState(() {
-      _messages.add({
-        'message_id': '',
-        'text': text,
-        'isSent': true,
-        'timestamp': DateTime.now(),
-        'delivered': 0,
-      });
-    });
+
+    final newMessage = {
+      'message_id': '',
+      'text': text,
+      'isSent': true,
+      'timestamp': DateTime.now(),
+      'delivered': 0,
+    };
+
+    _messages.add(newMessage);
+    _streamController.add(List.from(_messages));
     _controller.clear();
     _scrollToBottom();
   }
 
   Future<void> _sendFile(File file) async {
-    final ws = WebSocketChannel.connect(
-      Uri.parse('ws://172.30.226.235:5004/ws/${widget.senderUsername}'),
-    );
-
     final fileName = path.basename(file.path);
     final mimeType = lookupMimeType(file.path) ?? 'application/octet-stream';
 
@@ -175,10 +175,21 @@ class _ChatPageState extends State<ChatPage> {
       'file_url': 'incoming',
     });
 
-    ws.sink.add(fileMetadata);
+    _channel?.sink.add(fileMetadata);
     final fileBytes = await file.readAsBytes();
-    ws.sink.add(fileBytes);
-    ws.sink.close();
+    _channel?.sink.add(fileBytes);
+
+    final newMessage = {
+      'message_id': '',
+      'text': '[Dosya: $fileName]',
+      'isSent': true,
+      'timestamp': DateTime.now(),
+      'delivered': 0,
+      'file_name': fileName,
+    };
+
+    _messages.add(newMessage);
+    _streamController.add(List.from(_messages));
   }
 
   Future<void> _pickFile() async {
@@ -194,7 +205,7 @@ class _ChatPageState extends State<ChatPage> {
   Future<void> _downloadAndOpenFile(String username, String fileName) async {
     try {
       final url =
-          'http://172.30.226.235:5004/download_file/$username/$fileName';
+          '$Url:5004/download_file/$username/$fileName';
       final response = await http.get(Uri.parse(url));
       if (response.statusCode == 200) {
         final dir = await getTemporaryDirectory();
@@ -221,18 +232,25 @@ class _ChatPageState extends State<ChatPage> {
 
   void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scrollController.hasClients) {
-        _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
-      }
+      Future.delayed(const Duration(milliseconds: 100), () {
+        if (_scrollController.hasClients) {
+          _scrollController.animateTo(
+            _scrollController.position.maxScrollExtent,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOut,
+          );
+        }
+      });
     });
   }
 
   Future<void> _deleteMessage(String messageId, int index) async {
     final uri = Uri.parse(
-        'http://172.30.226.235:5004/delete_message/${widget.senderUsername}/$messageId');
+        '$Url:5004/delete_message/${widget.senderUsername}/$messageId');
     final res = await http.delete(uri);
     if (res.statusCode == 200) {
-      setState(() => _messages.removeAt(index));
+      _messages.removeAt(index);
+      _streamController.add(List.from(_messages));
     }
   }
 
@@ -365,16 +383,22 @@ class _ChatPageState extends State<ChatPage> {
       body: Column(
         children: [
           Expanded(
-            child: ListView.builder(
-              controller: _scrollController,
-              itemCount: _messages.length,
-              itemBuilder: (ctx, index) {
-                final msg = _messages[index];
-                return Dismissible(
-                  key: Key(msg['message_id'].toString()),
-                  onDismissed: (_) =>
-                      _deleteMessage(msg['message_id'], index),
-                  child: _buildMessageBubble(msg),
+            child: StreamBuilder<List<Map<String, dynamic>>>(
+              stream: _streamController.stream,
+              builder: (context, snapshot) {
+                final messages = snapshot.data ?? [];
+                return ListView.builder(
+                  controller: _scrollController,
+                  itemCount: messages.length,
+                  itemBuilder: (ctx, index) {
+                    final msg = messages[index];
+                    return Dismissible(
+                      key: Key(msg['message_id'].toString() + index.toString()),
+                      onDismissed: (_) =>
+                          _deleteMessage(msg['message_id'], index),
+                      child: _buildMessageBubble(msg),
+                    );
+                  },
                 );
               },
             ),
