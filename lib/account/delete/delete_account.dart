@@ -7,6 +7,8 @@ import 'package:http/http.dart' as http;
 import 'package:guvercin/env.dart';
 
 class DeleteAccount extends StatefulWidget {
+  const DeleteAccount({super.key});
+
   @override
   _DeleteAccountState createState() => _DeleteAccountState();
 }
@@ -66,7 +68,7 @@ class _DeleteAccountState extends State<DeleteAccount> {
 
       if (username == null) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Kullanıcı adı bulunamadı.')),
+          const SnackBar(content: Text('Kullanıcı adı bulunamadı.')),
         );
         return;
       }
@@ -96,7 +98,7 @@ class _DeleteAccountState extends State<DeleteAccount> {
         } else {
           // API'den hata alınmışsa
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Hesap silme işlemi başarısız.')),
+            const SnackBar(content: Text('Hesap silme işlemi başarısız.')),
           );
         }
       } catch (e) {
@@ -107,7 +109,7 @@ class _DeleteAccountState extends State<DeleteAccount> {
       }
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Kod veya şifre hatalı.')),
+        const SnackBar(content: Text('Kod veya şifre hatalı.')),
       );
     }
   }
@@ -116,9 +118,9 @@ class _DeleteAccountState extends State<DeleteAccount> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Hesap Sil'),
+        title: const Text('Hesap Sil'),
         leading: IconButton(
-          icon: Icon(Icons.arrow_back),
+          icon: const Icon(Icons.arrow_back),
           onPressed: () {
             Navigator.pop(context);
           },
@@ -131,32 +133,32 @@ class _DeleteAccountState extends State<DeleteAccount> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              Icon(
+              const Icon(
                 Icons.person,
                 size: 100, // İkon boyutu
                 color: Colors.grey, // İkon rengi
               ),
-              SizedBox(height: 20), // İkon ile metin arasında boşluk
+              const SizedBox(height: 20), // İkon ile metin arasında boşluk
               Text(
                 'Kod: $generatedCode',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
-              SizedBox(height: 10),
+              const SizedBox(height: 10),
               TextField(
                 controller: codeController,
                 keyboardType: TextInputType.number,
                 textAlign: TextAlign.center,
                 decoration:
-                    InputDecoration(labelText: 'Doğrulama Kodunu Girin'),
+                    const InputDecoration(labelText: 'Doğrulama Kodunu Girin'),
               ),
-              SizedBox(height: 10),
+             const SizedBox(height: 10),
               TextField(
                 controller: passwordController,
                 obscureText: true,
                 textAlign: TextAlign.center,
                 decoration: const InputDecoration(labelText: 'Şifrenizi Girin'),
               ),
-              SizedBox(height: 20),
+             const SizedBox(height: 20),
               ElevatedButton(
                 onPressed: deleteAccount,
                 style: ElevatedButton.styleFrom(backgroundColor: Colors.white),

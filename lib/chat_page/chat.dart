@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:async';
 import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:file_picker/file_picker.dart';
@@ -33,7 +34,7 @@ class _ChatPageState extends State<ChatPage> {
   WebSocketChannel? _channel;
   File? _pickedFile;
   String? _pickedFileName;
-  final _streamController = StreamController<List<Map<String, dynamic>>>.broadcast();
+  bool _isSending = false;
 
   @override
   void initState() {
@@ -47,7 +48,6 @@ class _ChatPageState extends State<ChatPage> {
     _channel?.sink.close();
     _controller.dispose();
     _scrollController.dispose();
-    _streamController.close();
     super.dispose();
   }
 
@@ -56,22 +56,46 @@ class _ChatPageState extends State<ChatPage> {
     _channel = WebSocketChannel.connect(Uri.parse(wsUrl));
 
     _channel!.stream.listen((event) {
+      print('🟢 WebSocket Mesaj Geldi: $event');
       final data = jsonDecode(event);
-      final messageId = data['message_id'];
-      DateTime time =
-          DateTime.tryParse(data['timestamp'] ?? '') ?? DateTime.now();
+      final messageId = data['message_id'].toString();
 
-      final newMessage = {
-        'message_id': messageId,
-        'text': _parseContent(data),
-        'isSent': data['sender'] == widget.senderUsername,
-        'timestamp': time,
-        'delivered': data['delivered'],
-        'file_name': data['file_name'],
-      };
+      final existingIndex = _messages.indexWhere((m) =>
+          m['message_id'].toString() == messageId ||
+          (m['message_id'].toString().startsWith('temp_') &&
+              m['text'] ==
+                  (data['message'] ??
+                      (data['file_name'] != null
+                          ? '[Dosya: ${data['file_name']}]'
+                          : ''))));
 
-      _messages.add(newMessage);
-      _streamController.add(List.from(_messages));
+      DateTime time;
+      try {
+        time = DateTime.fromMillisecondsSinceEpoch(
+            (int.tryParse(data['timestamp'].toString()) ?? 0) * 1000);
+      } catch (_) {
+        time = DateTime.now();
+      }
+
+      setState(() {
+        final newMessage = {
+          'message_id': messageId,
+          'text': _parseContent(data),
+          'isSent': data['sender'] == widget.senderUsername,
+          'timestamp': time,
+          'delivered': data['delivered'] ?? 0,
+          'file_name': data['file_name'],
+        };
+
+        if (existingIndex >= 0) {
+          _messages[existingIndex] = newMessage;
+        } else {
+          _messages.add(newMessage);
+        }
+
+        _isSending = false;
+      });
+
       _markAsSeen(messageId);
       _scrollToBottom();
     }, onError: (err) {
@@ -96,20 +120,21 @@ class _ChatPageState extends State<ChatPage> {
       final res = await http.get(Uri.parse(url));
       if (res.statusCode == 200) {
         final List data = jsonDecode(res.body);
-        _messages = data.map((msg) {
-          return {
-            'message_id': msg['id'],
-            'text': msg['type'] == 'text'
-                ? msg['content']
-                : '[Dosya: ${msg['file_name']}]',
-            'isSent': msg['sender'] == widget.senderUsername,
-            'timestamp':
-                DateTime.fromMillisecondsSinceEpoch(msg['timestamp'] * 1000),
-            'delivered': msg['delivered'] == 0 ? 1 : 0,
-            'file_name': msg['file_name'],
-          };
-        }).toList();
-        _streamController.add(List.from(_messages));
+        setState(() {
+          _messages = data.map((msg) {
+            return {
+              'message_id': msg['id'].toString(),
+              'text': msg['type'] == 'text'
+                  ? msg['content']
+                  : '[Dosya: ${msg['file_name']}]',
+              'isSent': msg['sender'] == widget.senderUsername,
+              'timestamp':
+                  DateTime.fromMillisecondsSinceEpoch(msg['timestamp'] * 1000),
+              'delivered': msg['delivered'],
+              'file_name': msg['file_name'],
+            };
+          }).toList();
+        });
         _scrollToBottom();
       }
     } catch (e) {
@@ -140,30 +165,51 @@ class _ChatPageState extends State<ChatPage> {
     final text = _controller.text.trim();
     if (text.isEmpty) return;
 
+    final tempId = 'temp_${DateTime.now().millisecondsSinceEpoch}';
+
+    setState(() {
+      _messages.add({
+        'message_id': tempId,
+        'text': text,
+        'isSent': true,
+        'timestamp': DateTime.now(),
+        'delivered': 0,
+        'file_name': null,
+      });
+      _controller.clear();
+    });
+
+    _scrollToBottom();
+
     final msg = {
       'sender': widget.senderUsername,
       'receiver': widget.receiverUsername,
       'message': text,
     };
     _channel?.sink.add(jsonEncode(msg));
-
-    final newMessage = {
-      'message_id': '',
-      'text': text,
-      'isSent': true,
-      'timestamp': DateTime.now(),
-      'delivered': 0,
-    };
-
-    _messages.add(newMessage);
-    _streamController.add(List.from(_messages));
-    _controller.clear();
-    _scrollToBottom();
   }
 
   Future<void> _sendFile(File file) async {
+    if (_isSending) return;
+
     final fileName = path.basename(file.path);
     final mimeType = lookupMimeType(file.path) ?? 'application/octet-stream';
+
+    final tempId = 'temp_${DateTime.now().millisecondsSinceEpoch}';
+
+    setState(() {
+      _isSending = true;
+      _messages.add({
+        'message_id': tempId,
+        'text': '[Dosya: $fileName]',
+        'isSent': true,
+        'timestamp': DateTime.now(),
+        'delivered': 0,
+        'file_name': fileName,
+      });
+    });
+
+    _scrollToBottom();
 
     final fileMetadata = jsonEncode({
       'sender': widget.senderUsername,
@@ -175,21 +221,19 @@ class _ChatPageState extends State<ChatPage> {
       'file_url': 'incoming',
     });
 
-    _channel?.sink.add(fileMetadata);
-    final fileBytes = await file.readAsBytes();
-    _channel?.sink.add(fileBytes);
-
-    final newMessage = {
-      'message_id': '',
-      'text': '[Dosya: $fileName]',
-      'isSent': true,
-      'timestamp': DateTime.now(),
-      'delivered': 0,
-      'file_name': fileName,
-    };
-
-    _messages.add(newMessage);
-    _streamController.add(List.from(_messages));
+    try {
+      _channel?.sink.add(fileMetadata);
+      final fileBytes = await file.readAsBytes();
+      _channel?.sink.add(fileBytes);
+    } catch (e) {
+      debugPrint('Dosya gönderme hatası: $e');
+    } finally {
+      setState(() {
+        _pickedFile = null;
+        _pickedFileName = null;
+        _isSending = false;
+      });
+    }
   }
 
   Future<void> _pickFile() async {
@@ -204,8 +248,7 @@ class _ChatPageState extends State<ChatPage> {
 
   Future<void> _downloadAndOpenFile(String username, String fileName) async {
     try {
-      final url =
-          'http://$Url:5004/download_file/$username/$fileName';
+      final url = 'http://$Url:5004/download_file/$username/$fileName';
       final response = await http.get(Uri.parse(url));
       if (response.statusCode == 200) {
         final dir = await getTemporaryDirectory();
@@ -232,15 +275,13 @@ class _ChatPageState extends State<ChatPage> {
 
   void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      Future.delayed(const Duration(milliseconds: 100), () {
-        if (_scrollController.hasClients) {
-          _scrollController.animateTo(
-            _scrollController.position.maxScrollExtent,
-            duration: const Duration(milliseconds: 300),
-            curve: Curves.easeOut,
-          );
-        }
-      });
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
     });
   }
 
@@ -249,36 +290,53 @@ class _ChatPageState extends State<ChatPage> {
         'http://$Url:5004/delete_message/${widget.senderUsername}/$messageId');
     final res = await http.delete(uri);
     if (res.statusCode == 200) {
-      _messages.removeAt(index);
-      _streamController.add(List.from(_messages));
+      setState(() {
+        _messages.removeAt(index);
+      });
     }
   }
 
   Widget _buildInputArea() {
-    return Padding(
-      padding: const EdgeInsets.all(8),
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 8,
+            offset: const Offset(0, -3),
+          ),
+        ],
+      ),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
           if (_pickedFile != null && _pickedFileName != null)
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              margin: const EdgeInsets.only(bottom: 4),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              margin: const EdgeInsets.only(bottom: 8),
               decoration: BoxDecoration(
-                color: Colors.grey[200],
-                borderRadius: BorderRadius.circular(8),
+                color: Colors.blue.shade50,
+                borderRadius: BorderRadius.circular(12),
               ),
               child: Row(
                 children: [
-                  const Icon(Icons.insert_drive_file, size: 20),
-                  const SizedBox(width: 8),
+                  const Icon(Icons.insert_drive_file,
+                      size: 22, color: Colors.blue),
+                  const SizedBox(width: 10),
                   Expanded(
                     child: Text(
                       _pickedFileName!,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w600,
+                        color: Colors.blueAccent,
+                      ),
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
                   IconButton(
-                    icon: const Icon(Icons.close, size: 16),
+                    icon: const Icon(Icons.close, color: Colors.blue),
                     onPressed: () {
                       setState(() {
                         _pickedFile = null;
@@ -291,27 +349,56 @@ class _ChatPageState extends State<ChatPage> {
             ),
           Row(
             children: [
-              IconButton(icon: const Icon(Icons.attach_file), onPressed: _pickFile),
-              Expanded(
-                child: TextField(
-                  controller: _controller,
-                  decoration: const InputDecoration(hintText: 'Mesaj yaz...'),
+              Material(
+                color: Colors.transparent,
+                child: IconButton(
+                  onPressed: _pickFile,
+                  icon: const Icon(Icons.attach_file, color: Colors.blue),
                 ),
               ),
-              IconButton(
-                icon: const Icon(Icons.send),
-                onPressed: () {
-                  if (_pickedFile != null) {
-                    _sendFile(_pickedFile!);
-                    setState(() {
-                      _pickedFile = null;
-                      _pickedFileName = null;
-                    });
-                  } else {
-                    _sendMessage();
-                  }
-                },
+              Expanded(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  decoration: BoxDecoration(
+                    color: Colors.grey[100],
+                    borderRadius: BorderRadius.circular(30),
+                    border: Border.all(color: Colors.grey.shade300),
+                  ),
+                  child: TextField(
+                    controller: _controller,
+                    onSubmitted: (_) => _sendMessage(),
+                    decoration: const InputDecoration(
+                      hintText: 'Mesaj yaz...',
+                      border: InputBorder.none,
+                    ),
+                    maxLines: null,
+                  ),
+                ),
               ),
+              const SizedBox(width: 6),
+              _isSending
+                  ? const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 8),
+                      child: SizedBox(
+                        height: 28,
+                        width: 28,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    )
+                  : Material(
+                      color: Colors.blue,
+                      shape: const CircleBorder(),
+                      child: IconButton(
+                        icon: const Icon(Icons.send, color: Colors.white),
+                        onPressed: () {
+                          if (_pickedFile != null) {
+                            _sendFile(_pickedFile!);
+                          } else {
+                            _sendMessage();
+                          }
+                        },
+                      ),
+                    ),
             ],
           ),
         ],
@@ -319,55 +406,73 @@ class _ChatPageState extends State<ChatPage> {
     );
   }
 
-  Widget _buildMessageBubble(Map<String, dynamic> msg) {
-    final isSent = msg['isSent'] as bool;
-    final alignment = isSent ? Alignment.centerRight : Alignment.centerLeft;
-    final bubbleColor = isSent ? Colors.blue[100] : Colors.grey[300];
-    const textColor = Colors.black;
-    final timestamp = msg['timestamp'] as DateTime;
-    final delivered = msg['delivered'] ?? 0;
+  Widget _buildMessageBubble(Map<String, dynamic> msg, int index) {
+    final isSent = msg['isSent'] as bool? ?? false;
+    final text = msg['text'] as String? ?? '';
+    final fileName = msg['file_name'] as String?;
 
-    Icon? statusIcon;
-    if (isSent) {
-      statusIcon = delivered == 1
-          ? const Icon(Icons.done_all, size: 16, color: Colors.blue)
-          : const Icon(Icons.done, size: 16, color: Colors.grey);
-    }
-
-    final isFile = msg['file_name'] != null;
+    final borderRadius = BorderRadius.only(
+      topLeft: const Radius.circular(16),
+      topRight: const Radius.circular(16),
+      bottomLeft: isSent ? const Radius.circular(16) : const Radius.circular(4),
+      bottomRight:
+          isSent ? const Radius.circular(4) : const Radius.circular(16),
+    );
 
     return Align(
-      alignment: alignment,
-      child: GestureDetector(
-        onTap: isFile
-            ? () => _downloadAndOpenFile(widget.senderUsername, msg['file_name'])
-            : null,
-        child: Container(
-          margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
-          padding: const EdgeInsets.all(8),
+      alignment: isSent ? Alignment.centerRight : Alignment.centerLeft,
+      child: Dismissible(
+        key: Key(msg['message_id']),
+        direction: isSent ? DismissDirection.endToStart : DismissDirection.none,
+        onDismissed: (_) => _deleteMessage(msg['message_id'], index),
+        background: Container(
           decoration: BoxDecoration(
-            color: bubbleColor,
-            borderRadius: BorderRadius.circular(8),
+            color: Colors.redAccent,
+            borderRadius: borderRadius,
           ),
-          child: Column(
-            crossAxisAlignment:
-                isSent ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-            children: [
-              Text(msg['text'], style: const TextStyle(color: textColor)),
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    '${timestamp.hour.toString().padLeft(2, '0')}:${timestamp.minute.toString().padLeft(2, '0')}',
-                    style: const TextStyle(fontSize: 10, color: Colors.black54),
+          alignment: Alignment.centerRight,
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: const Icon(Icons.delete, color: Colors.white),
+        ),
+        child: Container(
+          constraints: BoxConstraints(
+              maxWidth: MediaQuery.of(context).size.width * 0.75),
+          margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 12),
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+          decoration: BoxDecoration(
+            gradient: isSent
+                ? const LinearGradient(
+                    colors: [Color(0xff4A90E2), Color(0xff357ABD)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  )
+                : const LinearGradient(
+                    colors: [Color(0xffE1E1E1), Color(0xffC7C7C7)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
                   ),
-                  if (statusIcon != null) ...[
-                    const SizedBox(width: 4),
-                    statusIcon,
-                  ],
-                ],
-              ),
+            borderRadius: borderRadius,
+            boxShadow: const [
+              BoxShadow(
+                color: Colors.black12,
+                blurRadius: 4,
+                offset: Offset(0, 2),
+              )
             ],
+          ),
+          child: GestureDetector(
+            onTap: fileName != null
+                ? () => _downloadAndOpenFile(widget.senderUsername, fileName)
+                : null,
+            child: Text(
+              text,
+              style: TextStyle(
+                color: isSent ? Colors.white : Colors.black87,
+                fontSize: 16,
+                decoration: fileName != null ? TextDecoration.underline : null,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
           ),
         ),
       ),
@@ -377,34 +482,37 @@ class _ChatPageState extends State<ChatPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xffF5F7FA),
       appBar: AppBar(
-        title: Text('${widget.senderUsername} - ${widget.receiverUsername}'),
-      ),
-      body: Column(
-        children: [
-          Expanded(
-            child: StreamBuilder<List<Map<String, dynamic>>>(
-              stream: _streamController.stream,
-              builder: (context, snapshot) {
-                final messages = snapshot.data ?? [];
-                return ListView.builder(
-                  controller: _scrollController,
-                  itemCount: messages.length,
-                  itemBuilder: (ctx, index) {
-                    final msg = messages[index];
-                    return Dismissible(
-                      key: Key(msg['message_id'].toString() + index.toString()),
-                      onDismissed: (_) =>
-                          _deleteMessage(msg['message_id'], index),
-                      child: _buildMessageBubble(msg),
-                    );
-                  },
-                );
-              },
-            ),
+        backgroundColor: const Color(0xff357ABD),
+        elevation: 2,
+        centerTitle: true,
+        title: Text(
+          widget.receiverUsername,
+          style: const TextStyle(
+            fontWeight: FontWeight.bold,
+            fontSize: 22,
+            letterSpacing: 0.5,
           ),
-          _buildInputArea(),
-        ],
+        ),
+      ),
+      body: SafeArea(
+        child: Column(
+          children: [
+            Expanded(
+              child: ListView.builder(
+                controller: _scrollController,
+                itemCount: _messages.length,
+                padding: const EdgeInsets.only(top: 8, bottom: 8),
+                itemBuilder: (context, index) {
+                  final msg = _messages[index];
+                  return _buildMessageBubble(msg, index);
+                },
+              ),
+            ),
+            _buildInputArea(),
+          ],
+        ),
       ),
     );
   }
