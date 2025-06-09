@@ -1,5 +1,8 @@
+import 'dart:convert';
 import 'dart:math';
+import 'dart:typed_data';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:pointycastle/digests/sha256.dart';
 
 class DiffieHellman {
   final FlutterSecureStorage _storage = const FlutterSecureStorage();
@@ -35,7 +38,8 @@ class DiffieHellman {
     } else {
       // Private key yoksa, yeni bir key oluştur ve kaydet
       BigInt privateKey = generateRandomBigInt(256);
-      await _storage.write(key: '_privateKey', value: privateKey.toRadixString(16));
+      await _storage.write(
+          key: '_privateKey', value: privateKey.toRadixString(16));
       return privateKey;
     }
   }
@@ -52,8 +56,17 @@ class DiffieHellman {
     return publicKey;
   }
 
-  // Shared secret hesaplamak için fonksiyon ekleyebilirsiniz
-  // Future<BigInt> computeSharedSecret(BigInt otherPublicKey, BigInt privateKey, BigInt prime) async {
-  //   return modExp(otherPublicKey, privateKey, prime);
-  // }
+  // Ortak anahtar (shared secret) üretip, AES anahtarına dönüştürür
+  Future<Uint8List> computeSharedSecret(
+      BigInt otherPublicKey, BigInt prime) async {
+    BigInt privateKey = await getPrivateKey(); // Benim private key'im
+    BigInt sharedSecret = modExp(otherPublicKey, privateKey, prime);
+
+    // Ortak sır bilgisinden AES anahtarı üretmek için SHA-256 kullan
+    final sharedSecretBytes = utf8.encode(sharedSecret.toString());
+    final digest =
+        SHA256Digest().process(Uint8List.fromList(sharedSecretBytes));
+
+    return digest; // AES anahtarı (32 byte) olarak kullan
+  }
 }

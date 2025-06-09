@@ -1,8 +1,10 @@
 import 'dart:convert';
 import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:guvercin/diffie_hellman/diffie_hellman.dart';
 import 'package:http/http.dart' as http;
 import 'package:file_picker/file_picker.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
@@ -41,6 +43,7 @@ class _ChatPageState extends State<ChatPage> {
     super.initState();
     _connectWebSocket();
     _fetchMessages();
+    _getPublicKey();
   }
 
   @override
@@ -51,6 +54,52 @@ class _ChatPageState extends State<ChatPage> {
     super.dispose();
   }
 
+ 
+void _getPublicKey() async {
+  final keyUrl = 'http://$Url:5004/public_key/${widget.receiverUsername}';
+  String? publicKeyHex;
+  String? username;
+
+  try {
+    final response = await http.get(Uri.parse(keyUrl));
+
+    if (response.statusCode == 200) {
+      final data = json.decode(response.body);
+
+      // API'den gelen public_key büyük ihtimalle string (hex/base64)
+      publicKeyHex = data['public_key'] as String?;
+      username = data['username'] as String?;
+
+      if (publicKeyHex == null) {
+        print('❌ Public key boş döndü');
+        return;
+      }
+
+      print('🔑 Public key for $username: $publicKeyHex');
+    } else {
+      print('❌ Public key alınamadı. Durum: ${response.statusCode}');
+      return;
+    }
+  } catch (e) {
+    print('❗ Hata oluştu: $e');
+    return;
+  }
+
+  // Hex string'i BigInt'e çevir
+  BigInt otherPublicKey = BigInt.parse(publicKeyHex!, radix: 16);
+
+  final diffieHellman = DiffieHellman();
+
+  // Ortak sır (shared secret) hesapla
+  Uint8List sharedSecretKey = await diffieHellman.computeSharedSecret(
+    otherPublicKey,
+    defaultPrime,
+  );
+
+  print('AES Anahtarı (Base64): ${base64.encode(sharedSecretKey)}');
+
+  // sharedSecretKey artık AES şifreleme için kullanılabilir
+}
   void _connectWebSocket() {
     final wsUrl = 'ws://$Url:5004/ws/${widget.senderUsername}';
     _channel = WebSocketChannel.connect(Uri.parse(wsUrl));
@@ -246,20 +295,61 @@ class _ChatPageState extends State<ChatPage> {
     }
   }
 
+  double _downloadProgress = 0.0;
+  bool _isDownloading = false;
+
   Future<void> _downloadAndOpenFile(String username, String fileName) async {
+    setState(() {
+      _isDownloading = true;
+      _downloadProgress = 0.0;
+    });
+
     try {
       final url = 'http://$Url:5004/download_file/$username/$fileName';
-      final response = await http.get(Uri.parse(url));
+      final client = http.Client();
+      final request = http.Request('GET', Uri.parse(url));
+      final response = await client.send(request);
+
       if (response.statusCode == 200) {
+        final contentLength = response.contentLength ?? 0;
+        List<int> bytes = [];
+        int received = 0;
+
+        final completer = Completer<void>();
+
+        response.stream.listen(
+          (newBytes) {
+            bytes.addAll(newBytes);
+            received += newBytes.length;
+            if (contentLength != 0) {
+              setState(() {
+                _downloadProgress = received / contentLength;
+              });
+            }
+          },
+          onDone: () => completer.complete(),
+          onError: (e) {
+            completer.completeError(e);
+          },
+          cancelOnError: true,
+        );
+
+        await completer.future;
+
         final dir = await getTemporaryDirectory();
         final file = File('${dir.path}/$fileName');
-        await file.writeAsBytes(response.bodyBytes);
+        await file.writeAsBytes(bytes);
         await OpenFile.open(file.path);
       } else {
         debugPrint('Dosya indirilemedi: ${response.statusCode}');
       }
     } catch (e) {
       debugPrint('Dosya indirme hatası: $e');
+    } finally {
+      setState(() {
+        _isDownloading = false;
+        _downloadProgress = 0.0;
+      });
     }
   }
 
@@ -286,9 +376,12 @@ class _ChatPageState extends State<ChatPage> {
   }
 
   Future<void> _deleteMessage(String messageId, int index) async {
-    final uri = Uri.parse(
-        'http://$Url:5004/delete_message/${widget.senderUsername}/$messageId');
-    final res = await http.delete(uri);
+    final uri = Uri.parse('http://$Url:5004/delete_message/$messageId');
+    final res = await http.post(
+      uri,
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'username': widget.senderUsername}),
+    );
     if (res.statusCode == 200) {
       setState(() {
         _messages.removeAt(index);
@@ -423,7 +516,8 @@ class _ChatPageState extends State<ChatPage> {
       alignment: isSent ? Alignment.centerRight : Alignment.centerLeft,
       child: Dismissible(
         key: Key(msg['message_id']),
-        direction: isSent ? DismissDirection.endToStart : DismissDirection.none,
+        //sadece gönderen kendi mesajını silebiliyordu
+        // direction: isSent ? DismissDirection.endToStart : DismissDirection.none,
         onDismissed: (_) => _deleteMessage(msg['message_id'], index),
         background: Container(
           decoration: BoxDecoration(
@@ -499,6 +593,13 @@ class _ChatPageState extends State<ChatPage> {
       body: SafeArea(
         child: Column(
           children: [
+            if (_isDownloading)
+              LinearProgressIndicator(
+                value: _downloadProgress,
+                minHeight: 4,
+                backgroundColor: Colors.grey[300],
+                color: Colors.indigo,
+              ),
             Expanded(
               child: ListView.builder(
                 controller: _scrollController,
