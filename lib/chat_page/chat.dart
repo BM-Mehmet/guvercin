@@ -86,7 +86,7 @@ void _getPublicKey() async {
   }
 
   // Hex string'i BigInt'e çevir
-  BigInt otherPublicKey = BigInt.parse(publicKeyHex!, radix: 16);
+  BigInt otherPublicKey = BigInt.parse(publicKeyHex, radix: 16);
 
   final diffieHellman = DiffieHellman();
 
