@@ -3,6 +3,7 @@ import 'dart:math';
 import 'dart:typed_data';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:pointycastle/digests/sha256.dart';
+import 'package:pointycastle/export.dart';
 
 class DiffieHellman {
   final FlutterSecureStorage _storage = const FlutterSecureStorage();
@@ -61,7 +62,9 @@ class DiffieHellman {
       BigInt otherPublicKey, BigInt prime) async {
     BigInt privateKey = await getPrivateKey(); // Benim private key'im
     BigInt sharedSecret = modExp(otherPublicKey, privateKey, prime);
-
+    print("sharedsecret: {$sharedSecret}");
+    print("public: {$otherPublicKey}");
+    print("private: {$privateKey}");
     // Ortak sır bilgisinden AES anahtarı üretmek için SHA-256 kullan
     final sharedSecretBytes = utf8.encode(sharedSecret.toString());
     final digest =

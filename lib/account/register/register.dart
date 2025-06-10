@@ -81,14 +81,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
   Future<void> _generateKeys() async {
     const storage = FlutterSecureStorage();
     final dh = DiffieHellman();
-    final base = BigInt.from(2); // Base (g) değeri
-    const primeHex =
-        'FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD129024E088A67CC74C7A603AF3C704A8BB6A6E6E34F2A1F91EED6E9F75EECE6EFB134ABF38D49B582053246AC3E98C233569134D1B91A210060B42F3D722531AA5FE3E428BF29B9A1B5EE25A1A0171732C21D6CA4524F9AF6B52E8A4BB142BD02FD9F96E399EF906F27AF6A9A2854C4C520E5208E8AB603ED897CC4FD914F7A73D6FF3DF9E9459DC95A8E63A11AC83288F51EE5B6D14D2FE94F736AEBB9B529177BFB9F72D34005CB11D4AE7B8A8B768EA10F1FE93BB3A94D453C5471B571E44C2E98D858F265FE2CF2B5EE6A53E25B9F6D876AA2B18C07F7A0D57C91E';
-    final prime = BigInt.parse(primeHex, radix: 16);
-
+    
     // Private ve Public Key oluşturma
     final privateKey = dh.getPrivateKey();
-    final publicKey = dh.generatePublicKey(base, prime);
+    final publicKey = dh.generatePublicKey(defaultBase, defaultPrime);
 
     // Flutter Secure Storage'e anahtarları kaydetme
     await storage.write(key: '_privateKey', value: privateKey.toString());

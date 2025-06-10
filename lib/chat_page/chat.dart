@@ -4,6 +4,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:guvercin/aes_encription/aes_encription.dart';
 import 'package:guvercin/diffie_hellman/diffie_hellman.dart';
 import 'package:http/http.dart' as http;
 import 'package:file_picker/file_picker.dart';
@@ -54,8 +55,7 @@ class _ChatPageState extends State<ChatPage> {
     super.dispose();
   }
 
- 
-void _getPublicKey() async {
+Future<String?> _getPublicKey() async {
   final keyUrl = 'http://$Url:5004/public_key/${widget.receiverUsername}';
   String? publicKeyHex;
   String? username;
@@ -65,85 +65,102 @@ void _getPublicKey() async {
 
     if (response.statusCode == 200) {
       final data = json.decode(response.body);
-
-      // API'den gelen public_key büyük ihtimalle string (hex/base64)
       publicKeyHex = data['public_key'] as String?;
       username = data['username'] as String?;
 
       if (publicKeyHex == null) {
         print('❌ Public key boş döndü');
-        return;
+        return null;
       }
 
       print('🔑 Public key for $username: $publicKeyHex');
     } else {
       print('❌ Public key alınamadı. Durum: ${response.statusCode}');
-      return;
+      return null;
     }
   } catch (e) {
     print('❗ Hata oluştu: $e');
-    return;
+    return null;
   }
 
-  // Hex string'i BigInt'e çevir
-  BigInt otherPublicKey = BigInt.parse(publicKeyHex, radix: 16);
+  try {
+    // Hex string'i BigInt'e çevir
+    BigInt otherPublicKey = BigInt.parse(publicKeyHex, radix: 16);
 
-  final diffieHellman = DiffieHellman();
+    final diffieHellman = DiffieHellman();
 
-  // Ortak sır (shared secret) hesapla
-  Uint8List sharedSecretKey = await diffieHellman.computeSharedSecret(
-    otherPublicKey,
-    defaultPrime,
-  );
+    // Ortak sır (shared secret) hesapla
+    Uint8List sharedSecretKey = await diffieHellman.computeSharedSecret(
+      otherPublicKey,
+      defaultPrime,
+    );
 
-  print('AES Anahtarı (Base64): ${base64.encode(sharedSecretKey)}');
+    final base64Key = base64.encode(sharedSecretKey);
+    print('🔐 AES Anahtarı (Base64): $base64Key');
 
-  // sharedSecretKey artık AES şifreleme için kullanılabilir
+    return base64Key; // Return shared secret
+  } catch (e) {
+    print('❗ Shared secret hesaplama hatası: $e');
+    return null;
+  }
 }
+
   void _connectWebSocket() {
     final wsUrl = 'ws://$Url:5004/ws/${widget.senderUsername}';
     _channel = WebSocketChannel.connect(Uri.parse(wsUrl));
 
-    _channel!.stream.listen((event) {
-      print('🟢 WebSocket Mesaj Geldi: $event');
-      final data = jsonDecode(event);
-      final messageId = data['message_id'].toString();
+   _channel!.stream.listen((event) async {
+  print('🟢 WebSocket Mesaj Geldi: $event');
+  final data = jsonDecode(event);
+  final messageId = data['message_id'].toString();
 
-      final existingIndex = _messages.indexWhere((m) =>
-          m['message_id'].toString() == messageId ||
-          (m['message_id'].toString().startsWith('temp_') &&
-              m['text'] ==
-                  (data['message'] ??
-                      (data['file_name'] != null
-                          ? '[Dosya: ${data['file_name']}]'
-                          : ''))));
+  final sharedSecret = await _getPublicKey(); // Shared secret'ı al (veya cache'le)
 
-      DateTime time;
-      try {
-        time = DateTime.fromMillisecondsSinceEpoch(
-            (int.tryParse(data['timestamp'].toString()) ?? 0) * 1000);
-      } catch (_) {
-        time = DateTime.now();
-      }
+  String displayText;
+  if (data['message'] != null) {
+    try {
+      displayText = AesEncryption.decryptText(data['message'], sharedSecret!);
+    } catch (e) {
+      print('❗ Mesaj çözülemedi: $e');
+      displayText = '[Şifre çözülemedi]';
+    }
+  } else if (data['file_name'] != null) {
+    displayText = '[Dosya: ${data['file_name']}]';
+  } else {
+    displayText = '';
+  }
 
-      setState(() {
-        final newMessage = {
-          'message_id': messageId,
-          'text': _parseContent(data),
-          'isSent': data['sender'] == widget.senderUsername,
-          'timestamp': time,
-          'delivered': data['delivered'] ?? 0,
-          'file_name': data['file_name'],
-        };
+  final existingIndex = _messages.indexWhere((m) =>
+      m['message_id'].toString() == messageId ||
+      (m['message_id'].toString().startsWith('temp_') &&
+          m['text'] == displayText));
 
-        if (existingIndex >= 0) {
-          _messages[existingIndex] = newMessage;
-        } else {
-          _messages.add(newMessage);
-        }
+  DateTime time;
+  try {
+    time = DateTime.fromMillisecondsSinceEpoch(
+        (int.tryParse(data['timestamp'].toString()) ?? 0) * 1000);
+  } catch (_) {
+    time = DateTime.now();
+  }
 
-        _isSending = false;
-      });
+  setState(() {
+    final newMessage = {
+      'message_id': messageId,
+      'text': displayText,
+      'isSent': data['sender'] == widget.senderUsername,
+      'timestamp': time,
+      'delivered': data['delivered'] ?? 0,
+      'file_name': data['file_name'],
+    };
+
+    if (existingIndex >= 0) {
+      _messages[existingIndex] = newMessage;
+    } else {
+      _messages.add(newMessage);
+    }
+
+    _isSending = false;
+  });
 
       _markAsSeen(messageId);
       _scrollToBottom();
@@ -162,34 +179,53 @@ void _getPublicKey() async {
     });
   }
 
-  Future<void> _fetchMessages() async {
-    final url =
-        'http://$Url:5004/get_messages/${widget.senderUsername}/${widget.receiverUsername}';
-    try {
-      final res = await http.get(Uri.parse(url));
-      if (res.statusCode == 200) {
-        final List data = jsonDecode(res.body);
-        setState(() {
-          _messages = data.map((msg) {
-            return {
-              'message_id': msg['id'].toString(),
-              'text': msg['type'] == 'text'
-                  ? msg['content']
-                  : '[Dosya: ${msg['file_name']}]',
-              'isSent': msg['sender'] == widget.senderUsername,
-              'timestamp':
-                  DateTime.fromMillisecondsSinceEpoch(msg['timestamp'] * 1000),
-              'delivered': msg['delivered'],
-              'file_name': msg['file_name'],
-            };
-          }).toList();
-        });
-        _scrollToBottom();
-      }
-    } catch (e) {
-      debugPrint('Mesaj çekme hatası: $e');
+ Future<void> _fetchMessages() async {
+  final url =
+      'http://$Url:5004/get_messages/${widget.senderUsername}/${widget.receiverUsername}';
+  try {
+    final res = await http.get(Uri.parse(url));
+    if (res.statusCode == 200) {
+      final List data = jsonDecode(res.body);
+
+      final sharedSecret = await _getPublicKey();
+
+      final decryptedMessages = data.map((msg) {
+        String displayText;
+
+        if (msg['type'] == 'text') {
+          try {
+            displayText = AesEncryption.decryptText(
+              msg['content'], // Base64 cipherText (IV gömülü olmalı)
+              sharedSecret!,   // AES anahtarı (Base64)
+            );
+          } catch (e) {
+            print('❗ Mesaj çözülemedi: $e');
+            displayText = '[Şifre çözülemedi]';
+          }
+        } else {
+          displayText = '[Dosya: ${msg['file_name']}]';
+        }
+
+        return {
+          'message_id': msg['id'].toString(),
+          'text': displayText,
+          'isSent': msg['sender'] == widget.senderUsername,
+          'timestamp': DateTime.fromMillisecondsSinceEpoch(msg['timestamp'] * 1000),
+          'delivered': msg['delivered'],
+          'file_name': msg['file_name'],
+        };
+      }).toList();
+
+      setState(() {
+        _messages = decryptedMessages;
+      });
+
+      _scrollToBottom();
     }
+  } catch (e) {
+    debugPrint('Mesaj çekme hatası: $e');
   }
+}
 
   Future<void> _markAsSeen(String messageId) async {
     final url = 'http://$Url:5004/ws/${widget.senderUsername}/seen';
@@ -210,33 +246,40 @@ void _getPublicKey() async {
     }
   }
 
-  void _sendMessage() {
-    final text = _controller.text.trim();
-    if (text.isEmpty) return;
+  Future<void> _sendMessage() async {
+  final text = _controller.text.trim();
+  if (text.isEmpty) return;
 
-    final tempId = 'temp_${DateTime.now().millisecondsSinceEpoch}';
+  final tempId = 'temp_${DateTime.now().millisecondsSinceEpoch}';
 
-    setState(() {
-      _messages.add({
-        'message_id': tempId,
-        'text': text,
-        'isSent': true,
-        'timestamp': DateTime.now(),
-        'delivered': 0,
-        'file_name': null,
-      });
-      _controller.clear();
+  setState(() {
+    _messages.add({
+      'message_id': tempId,
+      'text': text,
+      'isSent': true,
+      'timestamp': DateTime.now(),
+      'delivered': 0,
+      'file_name': null,
     });
+    _controller.clear();
+  });
 
-    _scrollToBottom();
+  _scrollToBottom();
 
-    final msg = {
-      'sender': widget.senderUsername,
-      'receiver': widget.receiverUsername,
-      'message': text,
-    };
-    _channel?.sink.add(jsonEncode(msg));
-  }
+  final sharedSecret = await _getPublicKey(); 
+
+  // 🔐 Metni AES-GCM ile şifrele
+  final encryptedText = AesEncryption.encryptText(text, sharedSecret!);
+
+  final msg = {
+    'sender': widget.senderUsername,
+    'receiver': widget.receiverUsername,
+    'message': encryptedText, // 🔐 Şifreli mesaj (IV gömülü)
+  };
+
+  _channel?.sink.add(jsonEncode(msg));
+}
+
 
   Future<void> _sendFile(File file) async {
     if (_isSending) return;
@@ -351,16 +394,6 @@ void _getPublicKey() async {
         _downloadProgress = 0.0;
       });
     }
-  }
-
-  String _parseContent(Map<String, dynamic> data) {
-    final file = data['file_name']?.toString().toLowerCase();
-    if (file != null) {
-      if (file.endsWith('.mp3') || file.endsWith('.wav')) return '[Ses Kaydı]';
-      if (file.endsWith('.jpg') || file.endsWith('.png')) return '[Fotoğraf]';
-      return '[Dosya: ${data['file_name']}]';
-    }
-    return data['message'] ?? '';
   }
 
   void _scrollToBottom() {
