@@ -18,7 +18,7 @@ class AesEncryption {
       ..setRange(0, iv.length, iv)
       ..setRange(iv.length, iv.length + encrypted.length, encrypted);
 
-    return base64.encode(combined); // tek string döner
+    return base64.encode(combined);
   }
 
   // --- Metin Çözme ---
@@ -26,8 +26,8 @@ class AesEncryption {
     final key = base64.decode(base64Key);
     final combined = base64.decode(base64Combined);
 
-    final iv = combined.sublist(0, 12); // ilk 12 byte IV
-    final cipherText = combined.sublist(12); // geri kalanı şifreli veri
+    final iv = combined.sublist(0, 12);
+    final cipherText = combined.sublist(12);
 
     final cipher = _initCipher(false, key, iv);
     final decrypted = cipher.process(cipherText);
@@ -48,16 +48,15 @@ class AesEncryption {
       ..setRange(0, iv.length, iv)
       ..setRange(iv.length, iv.length + encrypted.length, encrypted);
 
-    return combined; // IV gömülü haliyle tek parça
+    return combined;
   }
 
   // --- Dosya Çözme ---
   static Uint8List decryptFile(Uint8List combinedCipherData, String base64Key) {
     final key = base64.decode(base64Key);
 
-    final iv = combinedCipherData.sublist(0, 12); // ilk 12 byte IV
-    final cipherData =
-        combinedCipherData.sublist(12); // geri kalanı şifreli veri
+    final iv = combinedCipherData.sublist(0, 12);
+    final cipherData = combinedCipherData.sublist(12);
 
     final cipher = _initCipher(false, key, iv);
     return cipher.process(cipherData);
@@ -67,9 +66,10 @@ class AesEncryption {
   static GCMBlockCipher _initCipher(
       bool forEncryption, Uint8List key, Uint8List iv) {
     final keyParam = KeyParameter(key);
-    final ivParam = ParametersWithIV<KeyParameter>(keyParam, iv);
+    final params = AEADParameters(
+        keyParam, 128, iv, Uint8List(0)); // 128 bit tag, boş ek veri
     final gcm = GCMBlockCipher(AESEngine());
-    gcm.init(forEncryption, ivParam);
+    gcm.init(forEncryption, params);
     return gcm;
   }
 

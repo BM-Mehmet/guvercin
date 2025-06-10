@@ -55,112 +55,114 @@ class _ChatPageState extends State<ChatPage> {
     super.dispose();
   }
 
-Future<String?> _getPublicKey() async {
-  final keyUrl = 'http://$Url:5004/public_key/${widget.receiverUsername}';
-  String? publicKeyHex;
-  String? username;
+  Future<String?> _getPublicKey() async {
+    final keyUrl = 'http://$Url:5004/public_key/${widget.receiverUsername}';
+    String? publicKeyHex;
+    String? username;
 
-  try {
-    final response = await http.get(Uri.parse(keyUrl));
+    try {
+      final response = await http.get(Uri.parse(keyUrl));
 
-    if (response.statusCode == 200) {
-      final data = json.decode(response.body);
-      publicKeyHex = data['public_key'] as String?;
-      username = data['username'] as String?;
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        publicKeyHex = data['public_key'] as String?;
+        username = data['username'] as String?;
 
-      if (publicKeyHex == null) {
-        print('❌ Public key boş döndü');
+        if (publicKeyHex == null) {
+          print('❌ Public key boş döndü');
+          return null;
+        }
+
+        print('🔑 Public key for $username: $publicKeyHex');
+      } else {
+        print('❌ Public key alınamadı. Durum: ${response.statusCode}');
         return null;
       }
-
-      print('🔑 Public key for $username: $publicKeyHex');
-    } else {
-      print('❌ Public key alınamadı. Durum: ${response.statusCode}');
+    } catch (e) {
+      print('❗ Hata oluştu: $e');
       return null;
     }
-  } catch (e) {
-    print('❗ Hata oluştu: $e');
-    return null;
+
+    try {
+      // Hex string'i BigInt'e çevir
+      BigInt otherPublicKey = BigInt.parse(publicKeyHex, radix: 16);
+
+      final diffieHellman = DiffieHellman();
+
+      // Ortak sır (shared secret) hesapla
+      Uint8List sharedSecretKey = await diffieHellman.computeSharedSecret(
+        otherPublicKey,
+        defaultPrime,
+      );
+
+      final base64Key = base64.encode(sharedSecretKey);
+      print('🔐 AES Anahtarı (Base64): $base64Key');
+
+      return base64Key; // Return shared secret
+    } catch (e) {
+      print('❗ Shared secret hesaplama hatası: $e');
+      return null;
+    }
   }
-
-  try {
-    // Hex string'i BigInt'e çevir
-    BigInt otherPublicKey = BigInt.parse(publicKeyHex, radix: 16);
-
-    final diffieHellman = DiffieHellman();
-
-    // Ortak sır (shared secret) hesapla
-    Uint8List sharedSecretKey = await diffieHellman.computeSharedSecret(
-      otherPublicKey,
-      defaultPrime,
-    );
-
-    final base64Key = base64.encode(sharedSecretKey);
-    print('🔐 AES Anahtarı (Base64): $base64Key');
-
-    return base64Key; // Return shared secret
-  } catch (e) {
-    print('❗ Shared secret hesaplama hatası: $e');
-    return null;
-  }
-}
 
   void _connectWebSocket() {
     final wsUrl = 'ws://$Url:5004/ws/${widget.senderUsername}';
     _channel = WebSocketChannel.connect(Uri.parse(wsUrl));
 
-   _channel!.stream.listen((event) async {
-  print('🟢 WebSocket Mesaj Geldi: $event');
-  final data = jsonDecode(event);
-  final messageId = data['message_id'].toString();
+    _channel!.stream.listen((event) async {
+      print('🟢 WebSocket Mesaj Geldi: $event');
+      final data = jsonDecode(event);
+      final messageId = data['message_id'].toString();
 
-  final sharedSecret = await _getPublicKey(); // Shared secret'ı al (veya cache'le)
+      final sharedSecret =
+          await _getPublicKey(); // Shared secret'ı al (veya cache'le)
 
-  String displayText;
-  if (data['message'] != null) {
-    try {
-      displayText = AesEncryption.decryptText(data['message'], sharedSecret!);
-    } catch (e) {
-      print('❗ Mesaj çözülemedi: $e');
-      displayText = '[Şifre çözülemedi]';
-    }
-  } else if (data['file_name'] != null) {
-    displayText = '[Dosya: ${data['file_name']}]';
-  } else {
-    displayText = '';
-  }
+      String displayText;
+      if (data['message'] != null) {
+        try {
+          displayText =
+              AesEncryption.decryptText(data['message'], sharedSecret!);
+        } catch (e) {
+          print('❗ Mesaj çözülemedi: $e');
+          displayText = '[Şifre çözülemedi]';
+        }
+      } else if (data['file_name'] != null) {
+        displayText = '[Dosya: ${data['file_name']}]';
+      } else {
+        displayText = '';
+      }
 
-  final existingIndex = _messages.indexWhere((m) =>
-      m['message_id'].toString() == messageId ||
-      (m['message_id'].toString().startsWith('temp_') &&
-          m['text'] == displayText));
+      final existingIndex = _messages.indexWhere((m) =>
+          m['message_id'].toString() == messageId ||
+          (m['message_id'].toString().startsWith('temp_') &&
+              m['text'] == displayText));
 
-  DateTime time;
-  try {
-    time = DateTime.fromMillisecondsSinceEpoch(
-        (int.tryParse(data['timestamp'].toString()) ?? 0) * 1000);
-  } catch (_) {
-    time = DateTime.now();
-  }
+      DateTime time;
+      try {
+        time = DateTime.fromMillisecondsSinceEpoch(
+            (int.tryParse(data['timestamp'].toString()) ?? 0) * 1000);
+      } catch (_) {
+        time = DateTime.now();
+      }
 
-  setState(() {
-    final newMessage = {
-      'message_id': messageId,
-      'text': displayText,
-      'isSent': data['sender'] == widget.senderUsername,
-      'timestamp': time,
-      'delivered': data['delivered'] ?? 0,
-      'file_name': data['file_name'],
-    };
+      setState(() {
+        final newMessage = {
+          'message_id': messageId,
+          'text': displayText,
+          'isSent': data['sender'] == widget.senderUsername,
+          'timestamp': time,
+          'delivered': data['delivered'] ?? 0,
+          'file_name': data['file_name'],
+        };
 
-    if (existingIndex >= 0) {
-      _messages[existingIndex] = newMessage;
-    } else {
-      _messages.add(newMessage);
-    }
+        if (existingIndex >= 0) {
+          _messages[existingIndex] = newMessage;
+        } else {
+          _messages.add(newMessage);
+        }
 
-    _isSending = false;
-  });
+        _isSending = false;
+      });
 
       _markAsSeen(messageId);
       _scrollToBottom();
@@ -179,53 +181,54 @@ Future<String?> _getPublicKey() async {
     });
   }
 
- Future<void> _fetchMessages() async {
-  final url =
-      'http://$Url:5004/get_messages/${widget.senderUsername}/${widget.receiverUsername}';
-  try {
-    final res = await http.get(Uri.parse(url));
-    if (res.statusCode == 200) {
-      final List data = jsonDecode(res.body);
+  Future<void> _fetchMessages() async {
+    final url =
+        'http://$Url:5004/get_messages/${widget.senderUsername}/${widget.receiverUsername}';
+    try {
+      final res = await http.get(Uri.parse(url));
+      if (res.statusCode == 200) {
+        final List data = jsonDecode(res.body);
 
-      final sharedSecret = await _getPublicKey();
+        final sharedSecret = await _getPublicKey();
 
-      final decryptedMessages = data.map((msg) {
-        String displayText;
+        final decryptedMessages = data.map((msg) {
+          String displayText;
 
-        if (msg['type'] == 'text') {
-          try {
-            displayText = AesEncryption.decryptText(
-              msg['content'], // Base64 cipherText (IV gömülü olmalı)
-              sharedSecret!,   // AES anahtarı (Base64)
-            );
-          } catch (e) {
-            print('❗ Mesaj çözülemedi: $e');
-            displayText = '[Şifre çözülemedi]';
+          if (msg['type'] == 'text') {
+            try {
+              displayText = AesEncryption.decryptText(
+                msg['content'], // Base64 cipherText (IV gömülü olmalı)
+                sharedSecret!, // AES anahtarı (Base64)
+              );
+            } catch (e) {
+              print('❗ Mesaj çözülemedi: $e');
+              displayText = '[Şifre çözülemedi]';
+            }
+          } else {
+            displayText = '[Dosya: ${msg['file_name']}]';
           }
-        } else {
-          displayText = '[Dosya: ${msg['file_name']}]';
-        }
 
-        return {
-          'message_id': msg['id'].toString(),
-          'text': displayText,
-          'isSent': msg['sender'] == widget.senderUsername,
-          'timestamp': DateTime.fromMillisecondsSinceEpoch(msg['timestamp'] * 1000),
-          'delivered': msg['delivered'],
-          'file_name': msg['file_name'],
-        };
-      }).toList();
+          return {
+            'message_id': msg['id'].toString(),
+            'text': displayText,
+            'isSent': msg['sender'] == widget.senderUsername,
+            'timestamp':
+                DateTime.fromMillisecondsSinceEpoch(msg['timestamp'] * 1000),
+            'delivered': msg['delivered'],
+            'file_name': msg['file_name'],
+          };
+        }).toList();
 
-      setState(() {
-        _messages = decryptedMessages;
-      });
+        setState(() {
+          _messages = decryptedMessages;
+        });
 
-      _scrollToBottom();
+        _scrollToBottom();
+      }
+    } catch (e) {
+      debugPrint('Mesaj çekme hatası: $e');
     }
-  } catch (e) {
-    debugPrint('Mesaj çekme hatası: $e');
   }
-}
 
   Future<void> _markAsSeen(String messageId) async {
     final url = 'http://$Url:5004/ws/${widget.senderUsername}/seen';
@@ -247,39 +250,38 @@ Future<String?> _getPublicKey() async {
   }
 
   Future<void> _sendMessage() async {
-  final text = _controller.text.trim();
-  if (text.isEmpty) return;
+    final text = _controller.text.trim();
+    if (text.isEmpty) return;
 
-  final tempId = 'temp_${DateTime.now().millisecondsSinceEpoch}';
+    final tempId = 'temp_${DateTime.now().millisecondsSinceEpoch}';
 
-  setState(() {
-    _messages.add({
-      'message_id': tempId,
-      'text': text,
-      'isSent': true,
-      'timestamp': DateTime.now(),
-      'delivered': 0,
-      'file_name': null,
+    setState(() {
+      _messages.add({
+        'message_id': tempId,
+        'text': text,
+        'isSent': true,
+        'timestamp': DateTime.now(),
+        'delivered': 0,
+        'file_name': null,
+      });
+      _controller.clear();
     });
-    _controller.clear();
-  });
 
-  _scrollToBottom();
+    _scrollToBottom();
 
-  final sharedSecret = await _getPublicKey(); 
+    final sharedSecret = await _getPublicKey();
 
-  // 🔐 Metni AES-GCM ile şifrele
-  final encryptedText = AesEncryption.encryptText(text, sharedSecret!);
+    // 🔐 Metni AES-GCM ile şifrele
+    final encryptedText = AesEncryption.encryptText(text, sharedSecret!);
 
-  final msg = {
-    'sender': widget.senderUsername,
-    'receiver': widget.receiverUsername,
-    'message': encryptedText, // 🔐 Şifreli mesaj (IV gömülü)
-  };
+    final msg = {
+      'sender': widget.senderUsername,
+      'receiver': widget.receiverUsername,
+      'message': encryptedText, // 🔐 Şifreli mesaj (IV gömülü)
+    };
 
-  _channel?.sink.add(jsonEncode(msg));
-}
-
+    _channel?.sink.add(jsonEncode(msg));
+  }
 
   Future<void> _sendFile(File file) async {
     if (_isSending) return;
@@ -315,8 +317,17 @@ Future<String?> _getPublicKey() async {
 
     try {
       _channel?.sink.add(fileMetadata);
+
+      // Dosyayı oku
       final fileBytes = await file.readAsBytes();
-      _channel?.sink.add(fileBytes);
+      final sharedSecret = await _getPublicKey();
+
+      // Şifrele
+      final encryptedFileBytes =
+          AesEncryption.encryptFile(fileBytes, sharedSecret!);
+
+      // Şifreli dosyayı gönder
+      _channel?.sink.add(encryptedFileBytes);
     } catch (e) {
       debugPrint('Dosya gönderme hatası: $e');
     } finally {
@@ -379,9 +390,20 @@ Future<String?> _getPublicKey() async {
 
         await completer.future;
 
+        // Şifreli dosya byte'ları Uint8List olarak al
+        final encryptedBytes = Uint8List.fromList(bytes);
+        final sharedSecret = await _getPublicKey();
+
+        // Şifre çöz
+        final decryptedBytes =
+            AesEncryption.decryptFile(encryptedBytes, sharedSecret!);
+
         final dir = await getTemporaryDirectory();
         final file = File('${dir.path}/$fileName');
-        await file.writeAsBytes(bytes);
+
+        // Çözülen dosyayı kaydet
+        await file.writeAsBytes(decryptedBytes);
+
         await OpenFile.open(file.path);
       } else {
         debugPrint('Dosya indirilemedi: ${response.statusCode}');
