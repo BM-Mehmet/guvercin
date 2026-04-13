@@ -1,4 +1,4 @@
-const String Url = "34.40.27.112";
+const String Url = "sunucu-ip";
 final BigInt defaultBase = BigInt.from(2);
 final BigInt defaultPrime = BigInt.parse(
   'FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD1'
