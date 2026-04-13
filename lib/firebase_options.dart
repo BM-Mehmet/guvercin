@@ -41,47 +41,47 @@ class DefaultFirebaseOptions {
   }
 
   static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'AIzaSyCgsh5GiKYu-7zWyxisvQO8PSNwUN_AYuE',
-    appId: '1:825431850356:web:511891062adf18111d4021',
-    messagingSenderId: '825431850356',
-    projectId: 'guvercin-b5d67',
-    authDomain: 'guvercin-b5d67.firebaseapp.com',
-    storageBucket: 'guvercin-b5d67.firebasestorage.app',
+    apiKey: 'AIzaSyCgsh5GiKYu-****************-*********',
+    appId: '1:*************:web:********************',
+    messagingSenderId: '*****************',
+    projectId: 'guvercin-*****',
+    authDomain: 'guvercin-*****.firebaseapp.com',
+    storageBucket: 'guvercin-*****.firebasestorage.app',
   );
 
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'AIzaSyCKkaGsmOqvcnq-EKmbLJYnSIVZxS6fQ2g',
-    appId: '1:825431850356:android:21a6607405ba1ab91d4021',
-    messagingSenderId: '825431850356',
-    projectId: 'guvercin-b5d67',
-    storageBucket: 'guvercin-b5d67.firebasestorage.app',
+    apiKey: 'AIza************-***********',
+    appId: '1:825431***********:android:21a660740**************',
+    messagingSenderId: '8254***********',
+    projectId: 'guvercin-*****',
+    storageBucket: 'guvercin-*****.firebasestorage.app',
   );
 
   static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'AIzaSyBn4XVgYuoyRUhTOJU1KGQ6T3qnpY-8dwU',
-    appId: '1:825431850356:ios:1d7568a135e0dc9b1d4021',
-    messagingSenderId: '825431850356',
-    projectId: 'guvercin-b5d67',
-    storageBucket: 'guvercin-b5d67.firebasestorage.app',
+    apiKey: 'AIza************-***********',
+    appId: '1:825431***********:android:21a660740**************',
+    messagingSenderId: '8254***********',
+    projectId: 'guvercin-*****',
+    storageBucket: 'guvercin-*****.firebasestorage.app',
     iosBundleId: 'com.example.guvercin',
   );
 
   static const FirebaseOptions macos = FirebaseOptions(
-    apiKey: 'AIzaSyBn4XVgYuoyRUhTOJU1KGQ6T3qnpY-8dwU',
-    appId: '1:825431850356:ios:1d7568a135e0dc9b1d4021',
-    messagingSenderId: '825431850356',
-    projectId: 'guvercin-b5d67',
-    storageBucket: 'guvercin-b5d67.firebasestorage.app',
+    apiKey: 'AIza************-***********',
+    appId: '1:825431***********:android:21a660740**************',
+    messagingSenderId: '8254***********',
+    projectId: 'guvercin-*****',
+    storageBucket: 'guvercin-*****.firebasestorage.app',
     iosBundleId: 'com.example.guvercin',
   );
 
   static const FirebaseOptions windows = FirebaseOptions(
-    apiKey: 'AIzaSyCgsh5GiKYu-7zWyxisvQO8PSNwUN_AYuE',
-    appId: '1:825431850356:web:7397b82a6e4d165f1d4021',
-    messagingSenderId: '825431850356',
-    projectId: 'guvercin-b5d67',
-    authDomain: 'guvercin-b5d67.firebaseapp.com',
-    storageBucket: 'guvercin-b5d67.firebasestorage.app',
+    apiKey: 'AIza************-***********',
+    appId: '1:825431***********:android:21a660740**************',
+    messagingSenderId: '8254***********',
+    projectId: 'guvercin-*****',
+    authDomain: 'guvercin-*****.firebaseapp.com',
+    storageBucket: 'guvercin-****.firebasestorage.app',
   );
 
 }
